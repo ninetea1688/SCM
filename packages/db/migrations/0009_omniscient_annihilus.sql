@@ -1,0 +1,1 @@
+ALTER TABLE "quota_usage" ADD COLUMN "quota_limit" integer;

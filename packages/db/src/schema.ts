@@ -347,6 +347,8 @@ export const quotaUsage = pgTable(
     kind: text('kind').notNull(),
     windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
     used: integer('used').notNull().default(0),
+    /** PUB-05: the platform-reported cap when the reading was taken (may change per plan). */
+    quotaLimit: integer('quota_limit'),
   },
   (t) => [uniqueIndex('quota_usage_uq').on(t.socialAccountId, t.kind, t.windowStart)],
 );

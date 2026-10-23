@@ -5,11 +5,13 @@ import { type AppConfig, CONFIG, loadConfig } from '../config';
 import { MetricsService } from '../health/metrics.service';
 import { AuditService } from './audit.service';
 import { TokenCipher } from './crypto';
+import { APP_DB, SYSTEM_DB } from './db-tokens';
+import { QuotaRecorder } from './quota-recorder.service';
 
-/** Tenant-scoped DB (role scm_app, RLS enforced). Use with `withTenant()`. */
-export const APP_DB = Symbol('APP_DB');
+export { APP_DB, SYSTEM_DB };
+
 /** Cross-tenant DB (role scm_system, BYPASSRLS). Only for system jobs — see ADR-0006. */
-export const SYSTEM_DB = Symbol('SYSTEM_DB');
+// (tokens live in ./db-tokens to avoid a circular import; re-exported above)
 const POOLS = Symbol('POOLS');
 
 @Global()
@@ -37,8 +39,9 @@ const POOLS = Symbol('POOLS');
     },
     AuditService,
     MetricsService,
+    QuotaRecorder,
   ],
-  exports: [CONFIG, APP_DB, SYSTEM_DB, TokenCipher, AuditService, MetricsService],
+  exports: [CONFIG, APP_DB, SYSTEM_DB, TokenCipher, AuditService, MetricsService, QuotaRecorder],
 })
 export class CoreModule implements OnApplicationShutdown {
   constructor(@Inject(POOLS) private readonly pools: { app: pg.Pool; system: pg.Pool }) {}

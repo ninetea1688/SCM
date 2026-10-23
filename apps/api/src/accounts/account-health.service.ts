@@ -11,14 +11,16 @@
  * Uses the system role (cross-tenant, BYPASSRLS — ADR-0006): these checks are
  * workspace-independent system work, never per-request tenant reads.
  */
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { type Db, memberships, socialAccounts } from '@scm/db';
 import type { Platform } from '@scm/domain';
 import { and, eq, inArray } from 'drizzle-orm';
-import { SYSTEM_DB } from '../common/core.module';
 import { TokenCipher } from '../common/crypto';
+import { SYSTEM_DB } from '../common/db-tokens';
+import { QuotaRecorder } from '../common/quota-recorder.service';
 import { type AppConfig, CONFIG } from '../config';
 import { NotificationService } from '../notifications/notification.service';
+import type { AdapterRegistry } from '../publishing/adapters/registry';
 
 export type Probe = 'ok' | 'expired' | 'transient';
 
@@ -26,6 +28,9 @@ type Account = typeof socialAccounts.$inferSelect;
 
 /** Graph auth codes (matches adapters/graph.ts) and LINE 401 mean "reconnect". */
 const GRAPH_AUTH_CODES = new Set([10, 102, 190, 200]);
+
+/** Platforms whose adapters expose a live quota API worth persisting (PUB-05). */
+const QUOTA_PLATFORMS: ReadonlySet<string> = new Set(['facebook', 'instagram', 'line']);
 
 @Injectable()
 export class AccountHealthService {
@@ -38,6 +43,10 @@ export class AccountHealthService {
     @Inject(CONFIG) private readonly cfg: AppConfig,
     private readonly cipher: TokenCipher,
     private readonly notifications: NotificationService,
+    // Optional: only the publishing wiring can fetch live quotas; bare test
+    // constructions (probe unit tests) skip the PUB-05 recording below.
+    @Optional() private readonly adapters?: AdapterRegistry,
+    @Optional() private readonly recorder?: QuotaRecorder,
   ) {}
 
   /** One authenticated call. Never throws — a network failure is `transient`. */
@@ -103,15 +112,42 @@ export class AccountHealthService {
   async runMaintenance(fetchFn: typeof fetch = this.probeFetch): Promise<{
     checked: number;
     disconnected: number;
+    quotasRecorded: number;
   }> {
     const rows = await this.system.select().from(socialAccounts);
     let disconnected = 0;
+    let quotasRecorded = 0;
     for (const a of rows) {
       if (a.status === 'disconnected') continue;
       const verdict = await this.checkAccount(a, fetchFn);
       if (verdict === 'expired') disconnected++;
+      if (verdict === 'ok') quotasRecorded += await this.recordQuotas(a); // PUB-05
     }
-    return { checked: rows.length, disconnected };
+    return { checked: rows.length, disconnected, quotasRecorded };
+  }
+
+  /** Persist the platform's live reading for healthy, non-sandbox accounts. */
+  private async recordQuotas(a: Account): Promise<number> {
+    if (
+      !this.adapters ||
+      !this.recorder ||
+      !QUOTA_PLATFORMS.has(a.platform) ||
+      (a.scopes ?? []).includes('sandbox') ||
+      !a.accessTokenEnc
+    ) {
+      return 0;
+    }
+    try {
+      const quotas = await this.adapters.get(a.platform as Platform).getQuota({
+        socialAccountId: a.id,
+        externalId: a.externalId,
+        accessToken: this.cipher.decrypt(a.accessTokenEnc),
+      });
+      return await this.recorder.record({ id: a.id, workspaceId: a.workspaceId }, quotas);
+    } catch (e) {
+      this.log.debug(`quota read for ${a.id} failed: ${String(e)}`);
+      return 0;
+    }
   }
 
   /**
