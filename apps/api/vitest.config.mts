@@ -5,7 +5,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   plugins: [swc.vite({ module: { type: 'es6' } })],
   test: {
-    env: { LOG_LEVEL: 'error', NODE_ENV: 'test' },
+    env: { LOG_LEVEL: 'error', NODE_ENV: 'test', QUEUE_PREFIX: 'scm-test' },
     include: ['src/**/*.test.ts'],
     testTimeout: 20_000,
     fileParallelism: false,

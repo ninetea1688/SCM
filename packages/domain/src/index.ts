@@ -1,4 +1,5 @@
 export * from './adapter.js';
+export * from './media.js';
 export * from './platform.js';
 export * from './publish-job.js';
 export * from './quota.js';

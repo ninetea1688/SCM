@@ -12,7 +12,7 @@ export const bullRoot = BullModule.forRootAsync({
         password: url.password || undefined,
         db: url.pathname.length > 1 ? Number(url.pathname.slice(1)) : 0,
       },
-      prefix: 'scm',
+      prefix: cfg.QUEUE_PREFIX,
     };
   },
 });

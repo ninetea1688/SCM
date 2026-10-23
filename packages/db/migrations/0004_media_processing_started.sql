@@ -1,0 +1,2 @@
+ALTER TABLE "inbound_events" ADD COLUMN "processing_started_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "media_assets" ADD COLUMN "processing_started_at" timestamp with time zone;

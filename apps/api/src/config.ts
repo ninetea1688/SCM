@@ -10,6 +10,8 @@ const Env = z.object({
   DATABASE_URL: z.string().default('postgres://scm_app:scm_app@localhost:5433/scm'),
   DATABASE_SYSTEM_URL: z.string().default('postgres://scm_system:scm_system@localhost:5433/scm'),
   REDIS_URL: z.string().default('redis://localhost:6380'),
+  /** BullMQ key prefix. Tests use their own so a running dev worker never steals test jobs. */
+  QUEUE_PREFIX: z.string().default('scm'),
 
   JWT_SECRET: z.string().min(32).default('dev-only-jwt-secret-change-me-0123456789'),
   ACCESS_TOKEN_TTL_SEC: z.coerce.number().default(15 * 60),
@@ -27,6 +29,32 @@ const Env = z.object({
   S3_FORCE_PATH_STYLE: z.stringbool().default(true),
   /** MEDIA-06: platforms fetch media from these; keep short. */
   SIGNED_URL_TTL_SEC: z.coerce.number().default(3600),
+
+  /** Presigned PUT lifetime for browser uploads (MEDIA-01). */
+  UPLOAD_URL_TTL_SEC: z.coerce.number().int().positive().default(900),
+  /** Lifetime of thumbnail/preview/original URLs handed to the web UI. */
+  PREVIEW_URL_TTL_SEC: z.coerce.number().int().positive().default(900),
+
+  /** MEDIA-03 / ADR-0008 processing limits and rendition settings. */
+  MEDIA_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(4 * 1024 ** 3),
+  MEDIA_MAX_INPUT_PIXELS: z.coerce.number().int().positive().default(50_000_000),
+  MEDIA_MAX_VIDEO_DIMENSION: z.coerce.number().int().positive().default(8192),
+  MEDIA_THUMB_PX: z.coerce.number().int().positive().default(320),
+  MEDIA_PREVIEW_PX: z.coerce.number().int().positive().default(1280),
+  MEDIA_WEBP_QUALITY: z.coerce.number().int().min(1).max(100).default(80),
+  MEDIA_PROCESS_TIMEOUT_SEC: z.coerce.number().positive().default(120),
+  MEDIA_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  MEDIA_JOB_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  /** Fair use: uploads in flight (uploading + processing) per workspace. */
+  MEDIA_MAX_INFLIGHT_PER_WORKSPACE: z.coerce.number().int().positive().default(50),
+  /** Sweeper: re-enqueue after this long in `processing`; give up after 4× this. */
+  MEDIA_STUCK_AFTER_MIN: z.coerce.number().positive().default(15),
+  FFMPEG_PATH: z.string().default('ffmpeg'),
+  FFPROBE_PATH: z.string().default('ffprobe'),
 
   /** `fake` publishes to an in-memory sandbox; `live` calls the real platform APIs. */
   PUBLISHER_MODE: z.enum(['fake', 'live']).default('fake'),

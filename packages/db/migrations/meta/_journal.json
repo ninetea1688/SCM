@@ -22,6 +22,27 @@
       "when": 1792760805123,
       "tag": "0002_inbound_events",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792763736332,
+      "tag": "0003_media_renditions",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792764217182,
+      "tag": "0004_media_processing_started",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792764295202,
+      "tag": "0005_media_requeues",
+      "breakpoints": true
     }
   ]
 }

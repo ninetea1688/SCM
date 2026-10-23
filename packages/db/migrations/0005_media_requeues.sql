@@ -1,0 +1,2 @@
+ALTER TABLE "inbound_events" ADD COLUMN "processing_requeues" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "media_assets" ADD COLUMN "processing_requeues" integer DEFAULT 0 NOT NULL;
