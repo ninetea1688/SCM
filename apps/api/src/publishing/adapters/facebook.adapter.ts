@@ -16,16 +16,8 @@ import {
   type QuotaInfo,
   validateVariant,
 } from '@scm/domain';
-import { type FetchFn, httpCall, retryAfterMs, TransportError } from './http';
-
-/** Graph error codes worth retrying (transient / throttling). */
-const RETRYABLE_CODES = new Set([1, 2, 4, 17, 32, 341, 613, 80001]);
-/** Auth / permission problems — retrying cannot help; account needs reconnecting. */
-const AUTH_CODES = new Set([10, 102, 190, 200]);
-
-interface GraphError {
-  error?: { code?: number; error_subcode?: number; message?: string; is_transient?: boolean };
-}
+import { graphErrorOutcome } from './graph';
+import { type FetchFn, httpCall, TransportError } from './http';
 
 export class FacebookAdapter implements PublisherAdapter {
   readonly platform = 'facebook' as const;
@@ -171,18 +163,8 @@ export class FacebookAdapter implements PublisherAdapter {
   }
 
   private errorOutcome(status: number, json: unknown, headers: Headers): AttemptOutcome | null {
-    if (status < 400) return null;
-    const e = (json as GraphError)?.error ?? {};
-    const code = e.code ?? 0;
-    const errorCode = `fb_${code}${e.error_subcode ? `_${e.error_subcode}` : ''}`;
-    const errorMessage = e.message ?? `HTTP ${status}`;
-    if (AUTH_CODES.has(code)) return { kind: 'permanent', errorCode, errorMessage };
-    if (RETRYABLE_CODES.has(code) || e.is_transient || status === 429) {
-      return { kind: 'retryable', errorCode, errorMessage, retryAfterMs: retryAfterMs(headers) };
-    }
-    // A 5xx on a write may still have created the post.
-    if (status >= 500) return { kind: 'unknown', errorCode, errorMessage };
-    return { kind: 'permanent', errorCode, errorMessage };
+    // A 5xx on a write may still have created the post → unknown (ADR-0004).
+    return graphErrorOutcome(status, json, headers, 'unknown', 'fb');
   }
 }
 

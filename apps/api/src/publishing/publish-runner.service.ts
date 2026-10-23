@@ -28,6 +28,7 @@ import {
   DEFAULT_RETRY_POLICY,
   nextStep,
   type Platform,
+  type PreparedHandle,
   type PublishRequest,
   type RetryPolicy,
   type SignedMedia,
@@ -42,6 +43,7 @@ import { APP_DB } from '../common/core.module';
 import { TokenCipher } from '../common/crypto';
 import { StorageService } from '../media/storage.service';
 import { NotificationService } from '../notifications/notification.service';
+import { TransportError } from './adapters/http';
 import { AdapterRegistry } from './adapters/registry';
 import { type PublishJobData, PublishQueue } from './queue';
 
@@ -51,6 +53,8 @@ export type RunResult =
 
 const RUNNABLE = ['queued', 'retrying', 'outcome_unknown'] as const;
 const MAX_RECONCILE_CHECKS = 5;
+/** A wake-up this close to the slot is treated as the slot itself. */
+const SLOT_WINDOW_MS = 30_000;
 
 type Job = typeof publishJobs.$inferSelect;
 type Variant = typeof postVariants.$inferSelect;
@@ -83,6 +87,7 @@ export class PublishRunner {
       this.claim(tx, data),
     );
     if ('skip' in claimed) return { status: 'skipped', reason: claimed.skip };
+    if ('defer' in claimed) return await this.preStage(data, claimed.defer);
 
     const { req, reconcileFirst } = claimed;
     if (claimed.blocked)
@@ -115,8 +120,11 @@ export class PublishRunner {
 
     let publishAttempted = false;
     if (!outcome) {
+      // ADR-0004: pre-stage now if the early wake-up never happened (short-notice
+      // schedule, lost queue entry). The slot wake-up is the real deadline.
+      const prepared = await this.maybePrepare(data, claimed.job, req);
       const startedAt = new Date();
-      const res = await adapter.publish({ ...req, attemptStartedAt: startedAt });
+      const res = await adapter.publish({ ...req, attemptStartedAt: startedAt }, prepared);
       publishAttempted = true;
       attempts.push({ kind: 'publish', outcome: res.outcome.kind, startedAt, trace: res.trace });
       outcome = res.outcome;
@@ -124,9 +132,95 @@ export class PublishRunner {
     return this.record(data, claimed, attempts, outcome, { publishAttempted });
   }
 
+  // ── prepare (ADR-0004): pre-stage invisible media work before the slot ──────
+
+  /** Early wake-up: create the container(s), store the handle, do not publish. */
+  private async preStage(
+    data: PublishJobData,
+    d: { job: Job; req: PublishRequest },
+  ): Promise<RunResult> {
+    if (d.job.preparedHandle) return { status: 'skipped', reason: 'already_prepared' };
+    const handle = await this.maybePrepare(data, d.job, d.req);
+    return { status: 'skipped', reason: handle ? 'prestaged' : 'prepare_failed' };
+  }
+
+  /**
+   * Run `adapter.prepare()` once per job and persist the handle so retries reuse the
+   * same container. A failure only loses the optimisation — publish() redoes the work.
+   */
+  private async maybePrepare(
+    data: PublishJobData,
+    job: Job,
+    req: PublishRequest,
+  ): Promise<PreparedHandle | undefined> {
+    const adapter = this.adapters.get(req.variant.platform);
+    if (!adapter.prepare || job.preparedHandle) return this.parseHandle(job.preparedHandle);
+    const startedAt = new Date();
+    try {
+      const handle = await adapter.prepare(req);
+      await this.savePrepare(data, job, startedAt, 'success', handle);
+      return handle;
+    } catch (e) {
+      const outcome: AttemptOutcome =
+        e instanceof TransportError
+          ? e.outcome
+          : { kind: 'unknown', errorCode: 'prepare_failed', errorMessage: String(e) };
+      const msg = 'errorMessage' in outcome ? `: ${outcome.errorMessage}` : '';
+      this.log.warn(`job ${job.id} prepare() ${outcome.kind}${msg}`);
+      await this.savePrepare(data, job, startedAt, outcome.kind);
+      return undefined;
+    }
+  }
+
+  private parseHandle(raw: string | null): PreparedHandle | undefined {
+    if (!raw) return undefined;
+    try {
+      const j = JSON.parse(raw) as { handle: string; expiresAt?: string };
+      return {
+        handle: j.handle,
+        ...(j.expiresAt ? { expiresAt: new Date(j.expiresAt) } : {}),
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async savePrepare(
+    data: PublishJobData,
+    job: Job,
+    startedAt: Date,
+    outcome: 'success' | 'retryable' | 'permanent' | 'unknown',
+    handle?: PreparedHandle,
+  ) {
+    await withTenant(this.db, { workspaceId: data.workspaceId }, async (tx) => {
+      if (handle)
+        await tx
+          .update(publishJobs)
+          .set({
+            preparedHandle: JSON.stringify({
+              handle: handle.handle,
+              ...(handle.expiresAt ? { expiresAt: handle.expiresAt.toISOString() } : {}),
+            }),
+            updatedAt: new Date(),
+          })
+          .where(eq(publishJobs.id, job.id));
+      await tx.insert(publishAttempts).values({
+        workspaceId: data.workspaceId,
+        jobId: job.id,
+        attempt: job.attempts,
+        kind: 'prepare',
+        outcome,
+        startedAt,
+      });
+    });
+  }
+
   // ── phase 1 ────────────────────────────────────────────────────────────────
 
-  private async claim(tx: Tx, data: PublishJobData): Promise<Claimed | { skip: string }> {
+  private async claim(
+    tx: Tx,
+    data: PublishJobData,
+  ): Promise<Claimed | { skip: string } | { defer: { job: Job; req: PublishRequest } }> {
     const [job] = await tx
       .select()
       .from(publishJobs)
@@ -204,12 +298,6 @@ export class PublishRunner {
           }
         : undefined;
 
-    if (!reconcileFirst) await this.setVariant(tx, variant, 'start');
-    await tx
-      .update(publishJobs)
-      .set({ status: 'running', updatedAt: new Date() })
-      .where(eq(publishJobs.id, job.id));
-
     const mediaRows = await tx
       .select({ asset: mediaAssets })
       .from(variantMedia)
@@ -240,6 +328,32 @@ export class PublishRunner {
       .orderBy(desc(publishAttempts.startedAt))
       .limit(1);
 
+    // ADR-0004 prepare(): the pre-stage wake-up only creates media containers
+    // (e.g. IG containers). No state changes — the variant stays `scheduled` and the
+    // slot wake-up (queued since scheduling) does the publish. A `prepare` wake-up
+    // arriving late (backlog) falls through to the normal path and publishes.
+    const platform = variant.platform as Platform;
+    if (
+      data.phase === 'prepare' &&
+      !reconcileFirst &&
+      job.status === 'queued' &&
+      vStatus === 'scheduled' &&
+      !blocked &&
+      job.runAt.getTime() - Date.now() > SLOT_WINDOW_MS &&
+      this.adapters.has(platform) &&
+      this.adapters.get(platform).prepare
+    ) {
+      return {
+        defer: { job, req: this.buildReq(job, variant, account, media, lastPublish, blocked) },
+      };
+    }
+
+    if (!reconcileFirst) await this.setVariant(tx, variant, 'start');
+    await tx
+      .update(publishJobs)
+      .set({ status: 'running', updatedAt: new Date() })
+      .where(eq(publishJobs.id, job.id));
+
     const settings = (ws.settings ?? {}) as { retryPolicy?: Partial<RetryPolicy> };
     return {
       job,
@@ -247,22 +361,33 @@ export class PublishRunner {
       reconcileFirst,
       blocked,
       policy: { ...DEFAULT_RETRY_POLICY, ...settings.retryPolicy },
-      req: {
-        jobId: job.id,
-        idempotencyKey: job.idempotencyKey,
-        variant: {
-          platform: variant.platform as Platform,
-          caption: variant.caption,
-          options: variant.options as VariantDraft['options'],
-        },
-        media,
-        account: {
-          socialAccountId: variant.socialAccountId,
-          externalId: account?.externalId ?? '',
-          accessToken: blocked ? '' : this.cipher.decrypt(account!.accessTokenEnc!),
-        },
-        attemptStartedAt: lastPublish?.startedAt ?? new Date(),
+      req: this.buildReq(job, variant, account, media, lastPublish, blocked),
+    };
+  }
+
+  private buildReq(
+    job: Job,
+    variant: Variant,
+    account: typeof socialAccounts.$inferSelect | undefined,
+    media: SignedMedia[],
+    lastPublish: { startedAt: Date } | undefined,
+    blocked?: AttemptOutcome,
+  ): PublishRequest {
+    return {
+      jobId: job.id,
+      idempotencyKey: job.idempotencyKey,
+      variant: {
+        platform: variant.platform as Platform,
+        caption: variant.caption,
+        options: variant.options as VariantDraft['options'],
       },
+      media,
+      account: {
+        socialAccountId: variant.socialAccountId,
+        externalId: account?.externalId ?? '',
+        accessToken: blocked ? '' : this.cipher.decrypt(account!.accessTokenEnc!),
+      },
+      attemptStartedAt: lastPublish?.startedAt ?? new Date(),
     };
   }
 

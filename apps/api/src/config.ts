@@ -67,6 +67,11 @@ const Env = z.object({
   /** `fake` publishes to an in-memory sandbox; `live` calls the real platform APIs. */
   PUBLISHER_MODE: z.enum(['fake', 'live']).default('fake'),
   META_GRAPH_VERSION: z.string().default('v24.0'),
+  /** ADR-0004 prepare(): how long before the slot the pre-stage wake-up fires. */
+  PUBLISH_PREPARE_LEAD_SEC: z.coerce.number().int().positive().default(300),
+  /** Instagram container status polling while a video processes (PUB-02). */
+  IG_CONTAINER_POLL_INTERVAL_SEC: z.coerce.number().positive().default(5),
+  IG_CONTAINER_POLL_MAX: z.coerce.number().int().positive().default(12),
   META_APP_ID: z.string().default(''),
   META_APP_SECRET: z.string().default(''),
   /** CONN AC: warn when a token expires within this many days. */

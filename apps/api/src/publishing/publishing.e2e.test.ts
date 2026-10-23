@@ -4,7 +4,14 @@
  * waiting for the BullMQ delay, which keeps the tests fast and deterministic.
  */
 import type { INestApplication } from '@nestjs/common';
-import { createDb, createPool, notifications, publishJobs } from '@scm/db';
+import {
+  createDb,
+  createPool,
+  notifications,
+  postVariants,
+  publishAttempts,
+  publishJobs,
+} from '@scm/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { bootApp, createWorld, OWNER_URL, type World } from '../test/harness';
@@ -182,6 +189,43 @@ describe('publishing (PUB AC)', () => {
     const recipients = new Set(rows.map((r) => r.userId));
     expect(recipients.has(w.as('editor').userId)).toBe(true);
     expect(recipients.has(w.as('approver').userId)).toBe(true);
+  });
+});
+
+describe('prepare() pre-stage (ADR-0004, PUB-02)', () => {
+  it('an early prepare wake-up stores the container handle without publishing; the slot then publishes once', async () => {
+    const id = await scheduledVariant('พรีสเตจ');
+    const job = await jobFor(id);
+    const data = { publishJobId: job.id, workspaceId: w.workspaceId, phase: 'prepare' as const };
+
+    // runAt is +2 min → this is the pre-stage wake-up, not the slot.
+    expect(await runner().run(data)).toEqual({ status: 'skipped', reason: 'prestaged' });
+    let after = await jobFor(id);
+    expect(after.status).toBe('queued');
+    expect(after.preparedHandle).toContain('fake_facebook_container_');
+    expect(fake().posts.get(after.idempotencyKey)).toBeUndefined(); // nothing published yet
+
+    const variantRow = await ownerDb
+      .select({ status: postVariants.status })
+      .from(postVariants)
+      .where(eq(postVariants.id, id));
+    expect(variantRow[0]!.status).toBe('scheduled');
+
+    // A repeated prepare wake-up is a no-op.
+    expect(await runner().run(data)).toEqual({ status: 'skipped', reason: 'already_prepared' });
+
+    // The slot wake-up (no phase) publishes — exactly once, reusing the prepared handle.
+    expect(await run(id)).toEqual({ status: 'succeeded' });
+    after = await jobFor(id);
+    expect(fake().posts.get(after.idempotencyKey)?.count).toBe(1);
+    const kinds = await ownerDb
+      .select({ kind: publishAttempts.kind, outcome: publishAttempts.outcome })
+      .from(publishAttempts)
+      .where(eq(publishAttempts.jobId, job.id));
+    expect(kinds.filter((k) => k.kind === 'prepare')).toEqual([
+      { kind: 'prepare', outcome: 'success' },
+    ]);
+    expect(kinds.filter((k) => k.kind === 'publish')).toHaveLength(1);
   });
 });
 

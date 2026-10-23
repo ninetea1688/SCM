@@ -1,18 +1,17 @@
 # Delivery status — traceability matrix
 
-**Current phase: P1 MVP (walking skeleton done).** Last updated 2026-10-23 (MEDIA-04).
+**Current phase: P1 MVP (walking skeleton done).** Last updated 2026-10-23 (PUB-02 Instagram).
 Legend: ✅ done + tested · 🟡 partial · ⬜ not started · ⏸ blocked (reason).
 Evidence = the test that proves the AC. Update this file in the same change that moves a row
 (the `/implement-req` skill does it). The SessionStart hook prints the "Next up" list.
 
 ## Next up (P1, in order)
 
-1. Instagram live adapter (containers, `content_publishing_limit`, `prepare()` pre-stage)
-2. CONN-05/07 token refresh + pre-slot health check job + disconnect alerts
-3. CAL-01 drag-and-drop reschedule, week/day/list views; CAL-03 Thai holidays; CAL-05 quota hints in UI
-4. NOTI-01 email channel; OPS-02/03/04 Sentry + Prometheus metrics + status page
-5. PDPA-02 data-subject requests; Meta deletion job processing (INT-04 currently records only)
-6. Staging stack on Docker Compose (same `docker-compose.prod.yml`, separate host/env)
+1. CONN-05/07 token refresh + pre-slot health check job + disconnect alerts
+2. CAL-01 drag-and-drop reschedule, week/day/list views; CAL-03 Thai holidays; CAL-05 quota hints in UI
+3. NOTI-01 email channel; OPS-02/03/04 Sentry + Prometheus metrics + status page
+4. PDPA-02 data-subject requests; Meta deletion job processing (INT-04 currently records only)
+5. Staging stack on Docker Compose (same `docker-compose.prod.yml`, separate host/env)
 
 ## P1 requirements
 
@@ -44,7 +43,7 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | CAL-03 BE/CE, Asia/Bangkok | 🟡 | `thai-date.ts`; holidays pending |
 | CAL-05 Quota warning | 🟡 | enforced at schedule (409); UI hint pending |
 | PUB-01 Own scheduler | ✅ | BullMQ delayed job; smoke: fired 0.14 s after slot |
-| PUB-02 Adapters FB/IG/LINE | 🟡 | FB + LINE live adapters (unit-tested with mocked HTTP); IG pending |
+| PUB-02 Adapters FB/IG/LINE | 🟡 | FB + IG + LINE live adapters, unit-tested with mocked HTTP (`adapters.test.ts`); IG: containers → `media_publish`, carousel, `prepare()` pre-stage (e2e), `reconcile`, live `content_publishing_limit`. Untested against real platform APIs (Meta App pending) |
 | PUB-03 Retry + backoff | ✅ | `publish-job.test.ts`, e2e "PUB-03" |
 | PUB-04 No duplicates | ✅ | ADR-0004; e2e "network lost … never a duplicate" |
 | PUB-05 Quota counting | 🟡 | daily cap check; per-platform live quota (`getQuota`) not persisted yet |

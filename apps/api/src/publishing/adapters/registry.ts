@@ -3,6 +3,7 @@ import { PLATFORMS, type Platform, type PublisherAdapter } from '@scm/domain';
 import { type AppConfig, CONFIG } from '../../config';
 import { FacebookAdapter } from './facebook.adapter';
 import { FakeAdapter } from './fake.adapter';
+import { InstagramAdapter } from './instagram.adapter';
 import { LineAdapter } from './line.adapter';
 
 /**
@@ -22,6 +23,13 @@ export class AdapterRegistry {
       return;
     }
     this.adapters.set('facebook', new FacebookAdapter(cfg.META_GRAPH_VERSION));
+    this.adapters.set(
+      'instagram',
+      new InstagramAdapter(cfg.META_GRAPH_VERSION, fetch, {
+        intervalMs: cfg.IG_CONTAINER_POLL_INTERVAL_SEC * 1000,
+        maxTries: cfg.IG_CONTAINER_POLL_MAX,
+      }),
+    );
     this.adapters.set('line', new LineAdapter());
   }
 

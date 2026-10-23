@@ -47,6 +47,7 @@ import { and, asc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import type { AuthUser, TenantInfo } from '../auth/auth.types';
 import { AuditService } from '../common/audit.service';
 import { APP_DB } from '../common/core.module';
+import { type AppConfig, CONFIG } from '../config';
 import { PublishQueue } from '../publishing/queue';
 
 export interface VariantInput {
@@ -74,6 +75,7 @@ export class PostsService {
     @Inject(APP_DB) private readonly db: Db,
     private readonly audit: AuditService,
     private readonly queue: PublishQueue,
+    @Inject(CONFIG) private readonly cfg: AppConfig,
   ) {}
 
   private tx<T>(t: TenantInfo, u: AuthUser, fn: (tx: Tx) => Promise<T>) {
@@ -361,6 +363,16 @@ export class PostsService {
             job!.attempts,
           ),
         );
+        // ADR-0004 prepare(): an extra wake-up ahead of the slot so adapters can
+        // pre-stage media (IG containers). The runner skips it instantly when the
+        // adapter has no prepare(), so it costs nothing on other platforms.
+        afterCommit.push(() =>
+          this.queue.wakeAt(
+            { publishJobId: job!.id, workspaceId: t.workspaceId, phase: 'prepare' },
+            new Date(at.getTime() - this.cfg.PUBLISH_PREPARE_LEAD_SEC * 1000),
+            'pre',
+          ),
+        );
       }
 
       await this.audit.record(tx, {
@@ -600,7 +612,10 @@ export class PostsService {
       )
       .returning();
     return async () => {
-      for (const j of jobs) await this.queue.cancel(j.id, j.attempts);
+      for (const j of jobs) {
+        await this.queue.cancel(j.id, j.attempts);
+        await this.queue.cancel(j.id, 'pre');
+      }
     };
   }
 

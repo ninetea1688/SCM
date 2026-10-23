@@ -10,6 +10,7 @@ import {
   type AttemptOutcome,
   type MediaFacts,
   type Platform,
+  type PreparedHandle,
   type PublisherAdapter,
   type PublishRequest,
   type QuotaInfo,
@@ -28,6 +29,14 @@ export class FakeAdapter implements PublisherAdapter {
 
   validate(variant: PublishRequest['variant'], media: readonly MediaFacts[]) {
     return validateVariant(variant, media);
+  }
+
+  /** Exercises the runner's prepare() pre-stage path (ADR-0004) in tests and demos. */
+  async prepare(req: PublishRequest): Promise<PreparedHandle> {
+    return {
+      handle: `fake_${this.platform}_container_${req.idempotencyKey}`,
+      expiresAt: new Date(Date.now() + 3600_000),
+    };
   }
 
   async publish(req: PublishRequest): Promise<AdapterResult> {

@@ -7,6 +7,11 @@ export const PUBLISH_QUEUE = 'publish';
 export interface PublishJobData {
   publishJobId: string;
   workspaceId: string;
+  /**
+   * Which wake-up this is. `prepare` is the ADR-0004 pre-stage wake-up ahead of the
+   * slot: it may only create media containers, never publish. Absent = publish.
+   */
+  phase?: 'prepare';
 }
 
 /**
