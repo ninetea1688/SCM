@@ -5,8 +5,34 @@ import { ACCESS, callApi, cookieOpts, REFRESH, type TokenPair, WORKSPACE } from 
 
 type Ctx = { params: Promise<{ path: string[] }> };
 
+/**
+ * Browser JS must never see access/refresh tokens (non-negotiable #5). Login/refresh are
+ * server-side only (use /session/*); any other auth response is stripped of token fields.
+ */
+const TOKEN_FIELDS = ['accessToken', 'refreshToken'] as const;
+
+function sanitizeAuth(base: string, body: string | null): string | null {
+  if (!body || !base.startsWith('auth/')) return body;
+  try {
+    const json = JSON.parse(body) as Record<string, unknown>;
+    for (const f of TOKEN_FIELDS) delete json[f];
+    for (const v of Object.values(json)) {
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        for (const f of TOKEN_FIELDS) delete (v as Record<string, unknown>)[f];
+      }
+    }
+    return JSON.stringify(json);
+  } catch {
+    return body;
+  }
+}
+
 async function handle(req: NextRequest, ctx: Ctx) {
   const { path } = await ctx.params;
+  const base = path.join('/');
+  if (base === 'auth/login' || base === 'auth/refresh') {
+    return new NextResponse(null, { status: 404 });
+  }
   const target = `/${path.join('/')}${req.nextUrl.search}`;
   const jar = await cookies();
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await req.text();
@@ -36,7 +62,7 @@ async function handle(req: NextRequest, ctx: Ctx) {
     }
   }
 
-  const out = new NextResponse(res.status === 204 ? null : await res.text(), {
+  const out = new NextResponse(res.status === 204 ? null : sanitizeAuth(base, await res.text()), {
     status: res.status,
     headers: { 'content-type': res.headers.get('content-type') ?? 'application/json' },
   });
