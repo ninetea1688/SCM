@@ -1,4 +1,4 @@
-import type { Platform, ValidationIssue, VariantStatus } from '@scm/domain';
+import type { Platform, ValidationIssue, VariantDraft, VariantStatus } from '@scm/domain';
 import Link from 'next/link';
 import { load } from '@/lib/load';
 import { VariantCard } from './variant-card';
@@ -6,6 +6,7 @@ import { VariantCard } from './variant-card';
 export interface VariantView {
   id: string;
   platform: Platform;
+  socialAccountId: string;
   caption: string;
   status: VariantStatus;
   version: number;
@@ -13,6 +14,7 @@ export interface VariantView {
   scheduledAt: string | null;
   permalink: string | null;
   issues: ValidationIssue[];
+  options?: VariantDraft['options'];
 }
 
 interface PostView {

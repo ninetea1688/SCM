@@ -3,10 +3,17 @@
 /** Workflow actions per status (APPR-01/02, PUB-01). The server re-checks every rule. */
 import { allowedEvents, formatThaiDateTime } from '@scm/domain';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PlatformBadge, StatusBadge } from '@/components/badges';
+import { VariantOptions as OptionsFields, type VariantOptions } from '@/components/variant-options';
 import { bff, describeError } from '@/lib/client';
 import type { VariantView } from './page';
+
+/** PUB-08: recipients/quota preview fetched for LINE variants before confirmation. */
+interface PublishPreview {
+  recipients: number | null;
+  quota: { kind: string; used: number; limit: number }[];
+}
 
 type Action =
   | 'submit'
@@ -56,6 +63,7 @@ function defaultSlot(): string {
 export function VariantCard({ variant: v }: { variant: VariantView }) {
   const router = useRouter();
   const [caption, setCaption] = useState(v.caption);
+  const [options, setOptions] = useState<VariantOptions>(v.options ?? {});
   const [when, setWhen] = useState(defaultSlot);
   const [comment, setComment] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -64,8 +72,23 @@ export function VariantCard({ variant: v }: { variant: VariantView }) {
   const actions = allowedEvents(v.status)
     .map((e) => EVENT_TO_ACTION[e])
     .filter((a): a is Action => !!a);
-  const dirty = caption !== v.caption;
+  const captionDirty = caption !== v.caption;
+  const optionsDirty = JSON.stringify(options) !== JSON.stringify(v.options ?? {});
+  const dirty = captionDirty || optionsDirty;
   const editable = !['publishing', 'retrying', 'published', 'cancelled'].includes(v.status);
+
+  // PUB-08: what a LINE send would consume, shown before the schedule button.
+  const [preview, setPreview] = useState<PublishPreview | null>(null);
+  useEffect(() => {
+    if (v.platform !== 'line' || !editable) return;
+    let alive = true;
+    bff<PublishPreview>(`/accounts/${v.socialAccountId}/publish-preview`)
+      .then((p) => alive && setPreview(p))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [v.platform, v.socialAccountId, editable]);
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -117,7 +140,14 @@ export function VariantCard({ variant: v }: { variant: VariantView }) {
           <button
             type="button"
             disabled={busy}
-            onClick={() => run(() => bff(`/variants/${v.id}`, 'PATCH', { caption }))}
+            onClick={() =>
+              run(() =>
+                bff(`/variants/${v.id}`, 'PATCH', {
+                  ...(captionDirty ? { caption } : {}),
+                  ...(optionsDirty ? { options } : {}),
+                }),
+              )
+            }
             className="rounded-md bg-ink px-3 py-1.5 text-surface"
           >
             บันทึกการแก้ไข
@@ -125,6 +155,13 @@ export function VariantCard({ variant: v }: { variant: VariantView }) {
           {v.approvedVersion !== null && <span className="text-warn">การแก้ไขจะทำให้ต้องอนุมัติใหม่</span>}
         </div>
       )}
+
+      <OptionsFields
+        platform={v.platform}
+        options={options}
+        onChange={setOptions}
+        disabled={!editable || busy}
+      />
 
       {v.issues.length > 0 && (
         <ul
@@ -146,6 +183,17 @@ export function VariantCard({ variant: v }: { variant: VariantView }) {
         >
           ดูโพสต์บนแพลตฟอร์ม
         </a>
+      )}
+
+      {v.platform === 'line' && actions.includes('schedule') && (
+        <p className="rounded-lg bg-brand/5 px-3 py-2 text-sm text-muted">
+          ตัวอย่างก่อนส่ง:{' '}
+          {preview?.recipients != null
+            ? `จะส่งถึงผู้ใช้ประมาณ ${preview.recipients.toLocaleString('th-TH')} คน`
+            : 'ยังประเมินจำนวนผู้รับไม่ได้ (ข้อมูลเชิงลึกของ LINE ยังไม่พร้อม)'}
+          {preview?.quota?.[0] &&
+            ` • โควตาข้อความเดือนนี้ ${preview.quota[0].used.toLocaleString('th-TH')}/${preview.quota[0].limit.toLocaleString('th-TH')}`}
+        </p>
       )}
 
       {actions.length > 0 && (

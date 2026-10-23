@@ -277,6 +277,33 @@ describe('InstagramAdapter', () => {
   });
 });
 
+describe('LineAdapter quota and recipients (PUB-05/PUB-08)', () => {
+  const line = (f: unknown) => new LineAdapter(f as typeof fetch);
+  const creds = { socialAccountId: 'a1', externalId: 'U1', accessToken: 'TOKEN' };
+
+  it('getQuota reads the monthly message window (PUB-05)', async () => {
+    const f = respondSeq([200, { type: 'limited', value: 500 }], [200, { totalUsage: 123 }]);
+    expect(await line(f).getQuota(creds)).toEqual([
+      { kind: 'line_messages_month', used: 123, limit: 500 },
+    ]);
+  });
+
+  it('getQuota answers empty for an unlimited channel', async () => {
+    const f = respondSeq([200, { type: 'none' }], [200, { totalUsage: 1 }]);
+    expect(await line(f).getQuota(creds)).toEqual([]);
+  });
+
+  it('followerCount returns targetedReaches when insight is ready (PUB-08)', async () => {
+    const f = respond(200, { status: 'ready', followers: 4200, targetedReaches: 3900 });
+    expect(await line(f).followerCount(creds, '20261023')).toBe(3900);
+  });
+
+  it('followerCount returns null while the insight is still processing', async () => {
+    const f = respond(200, { status: 'out_of_date' });
+    expect(await line(f).followerCount(creds, '20261023')).toBeNull();
+  });
+});
+
 describe('webhook signatures (SEC-03)', () => {
   it('verifies LINE signatures over the raw body', () => {
     const body = Buffer.from('{"events":[]}');

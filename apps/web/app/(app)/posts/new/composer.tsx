@@ -5,6 +5,7 @@ import type { Platform } from '@scm/domain';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { PlatformBadge } from '@/components/badges';
+import { VariantOptions as OptionsFields, type VariantOptions } from '@/components/variant-options';
 import { bff, describeError } from '@/lib/client';
 
 export interface AccountOption {
@@ -13,14 +14,17 @@ export interface AccountOption {
   platform: Platform;
 }
 
+interface VariantDraft {
+  caption: string;
+  custom: boolean;
+  options: VariantOptions;
+}
+
 export function Composer({ accounts }: { accounts: AccountOption[] }) {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [selected, setSelected] = useState<Record<string, { caption: string; custom: boolean }>>(
-    {},
-  );
-  const [ytTitle, setYtTitle] = useState('');
+  const [selected, setSelected] = useState<Record<string, VariantDraft>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -28,9 +32,12 @@ export function Composer({ accounts }: { accounts: AccountOption[] }) {
     setSelected((s) => {
       const next = { ...s };
       if (next[id]) delete next[id];
-      else next[id] = { caption: '', custom: false };
+      else next[id] = { caption: '', custom: false, options: {} };
       return next;
     });
+
+  const setVariant = (id: string, patch: Partial<VariantDraft>) =>
+    setSelected((s) => ({ ...s, [id]: { ...s[id]!, ...patch } }));
 
   async function save() {
     setBusy(true);
@@ -39,14 +46,11 @@ export function Composer({ accounts }: { accounts: AccountOption[] }) {
       const post = await bff<{ id: string }>('/posts', 'POST', {
         title,
         body,
-        variants: Object.entries(selected).map(([socialAccountId, v]) => {
-          const acc = accounts.find((a) => a.id === socialAccountId);
-          return {
-            socialAccountId,
-            caption: v.custom ? v.caption : body,
-            ...(acc?.platform === 'youtube' ? { options: { ytTitle } } : {}),
-          };
-        }),
+        variants: Object.entries(selected).map(([socialAccountId, v]) => ({
+          socialAccountId,
+          caption: v.custom ? v.caption : body,
+          ...(Object.keys(v.options).length ? { options: v.options } : {}),
+        })),
       });
       router.push(`/posts/${post.id}`);
     } catch (e) {
@@ -126,10 +130,7 @@ export function Composer({ accounts }: { accounts: AccountOption[] }) {
                   type="checkbox"
                   checked={v.custom}
                   onChange={(e) =>
-                    setSelected((s) => ({
-                      ...s,
-                      [id]: { caption: v.caption || body, custom: e.target.checked },
-                    }))
+                    setVariant(id, { caption: v.caption || body, custom: e.target.checked })
                   }
                 />
                 แก้ข้อความเฉพาะช่องทางนี้
@@ -140,20 +141,15 @@ export function Composer({ accounts }: { accounts: AccountOption[] }) {
                 rows={4}
                 aria-label={`ข้อความสำหรับ ${acc.name}`}
                 value={v.caption}
-                onChange={(e) =>
-                  setSelected((s) => ({ ...s, [id]: { ...v, caption: e.target.value } }))
-                }
+                onChange={(e) => setVariant(id, { caption: e.target.value })}
                 className="w-full rounded-lg border border-line bg-surface px-3 py-2"
               />
             )}
-            {acc.platform === 'youtube' && (
-              <input
-                placeholder="ชื่อวิดีโอ YouTube"
-                value={ytTitle}
-                onChange={(e) => setYtTitle(e.target.value)}
-                className="w-full rounded-lg border border-line bg-surface px-3 py-2"
-              />
-            )}
+            <OptionsFields
+              platform={acc.platform}
+              options={v.options}
+              onChange={(options) => setVariant(id, { options })}
+            />
           </section>
         );
       })}

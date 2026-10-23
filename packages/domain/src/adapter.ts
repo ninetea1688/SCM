@@ -74,4 +74,11 @@ export interface PublisherAdapter {
   reconcile(req: PublishRequest): Promise<AttemptOutcome | null>;
 
   getQuota(account: AccountCredentials): Promise<QuotaInfo[]>;
+
+  /**
+   * PUB-08: approximate recipient count for a broadcast preview (LINE targeted
+   * reach), for the newest complete day `yyyymmdd`. Optional — most platforms
+   * don't have it and the preview just shows the quota.
+   */
+  followerCount?(account: AccountCredentials, yyyymmdd: string): Promise<number | null>;
 }
