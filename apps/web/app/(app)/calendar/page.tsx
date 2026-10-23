@@ -6,14 +6,17 @@
 import {
   DAILY_PUBLISH_LIMITS,
   DEFAULT_QUOTA_WARN_RATIO,
+  PLATFORMS,
   type Platform,
   thaiHolidays,
+  VARIANT_STATUSES,
   type VariantStatus,
 } from '@scm/domain';
 import Link from 'next/link';
 import { PlatformDot, StatusBadge } from '@/components/badges';
 import { load } from '@/lib/load';
 import { Board, type BoardDay, type BoardItem } from './board';
+import { Filters } from './filters';
 
 interface CalItem {
   id: string;
@@ -85,6 +88,22 @@ function parseAnchor(q: { view?: string; d?: string }): { view: View; d: string 
   return { view, d };
 }
 
+/** CAL-02: comma lists from the URL, validated against the domain enums. */
+function parseFilters(q: { platforms?: string; statuses?: string }): {
+  platforms: Platform[];
+  statuses: VariantStatus[];
+} {
+  const pick = <T extends string>(raw: string | undefined, allowed: readonly T[]): T[] =>
+    (raw ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s): s is T => (allowed as readonly string[]).includes(s));
+  return {
+    platforms: pick(q.platforms, PLATFORMS),
+    statuses: pick(q.statuses, VARIANT_STATUSES),
+  };
+}
+
 /** CAL-05: warn chip when a day holds ≥ warnRatio of a platform's 24h cap. */
 function quotaWarnFor(items: BoardItem[]): BoardDay['quotaWarn'] {
   const byPlatform = new Map<Platform, number>();
@@ -118,10 +137,11 @@ function boardDays(keys: string[], byDay: Map<string, BoardItem[]>, todayKey: st
 export default async function CalendarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; d?: string }>;
+  searchParams: Promise<{ view?: string; d?: string; platforms?: string; statuses?: string }>;
 }) {
   const q = await searchParams;
   const { view, d } = parseAnchor(q);
+  const { platforms, statuses } = parseFilters(q);
 
   // Visible range (BKK midnights, exclusive `to`).
   const [y, mo, dd] = d.split('-').map(Number);
@@ -145,9 +165,20 @@ export default async function CalendarPage({
     to = new Date(from.getTime() + 31 * 86400_000);
   }
 
-  const here = `/calendar?view=${view}&d=${d}`;
+  // CAL-02: keep the filters on every calendar navigation link.
+  const f = [
+    platforms.length ? `platforms=${platforms.join(',')}` : '',
+    statuses.length ? `statuses=${statuses.join(',')}` : '',
+  ]
+    .filter(Boolean)
+    .join('&');
+  const withF = (href: string) => (f ? `${href}&${f}` : href);
+  const here = withF(`/calendar?view=${view}&d=${d}`);
   const [items, backlog] = await Promise.all([
-    load<CalItem[]>(`/calendar?from=${from.toISOString()}&to=${to.toISOString()}`, here),
+    load<CalItem[]>(
+      `/calendar?from=${from.toISOString()}&to=${to.toISOString()}${f ? `&${f}` : ''}`,
+      here,
+    ),
     load<BacklogItem[]>('/backlog', here),
   ]);
 
@@ -176,9 +207,11 @@ export default async function CalendarPage({
   const step = view === 'month' ? 0 : view === 'week' ? 7 : 1;
   const monthStep = (n: number) => {
     const dt = new Date(Date.UTC(y!, mo! - 1 + n, 1));
-    return `/calendar?view=month&d=${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-01`;
+    return withF(
+      `/calendar?view=month&d=${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-01`,
+    );
   };
-  const shift = (n: number) => `/calendar?view=${view}&d=${addDays(d, n)}`;
+  const shift = (n: number) => withF(`/calendar?view=${view}&d=${addDays(d, n)}`);
 
   const title =
     view === 'month'
@@ -191,6 +224,7 @@ export default async function CalendarPage({
   const christianYear = view === 'month' ? `(${y})` : '';
 
   const agenda = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const filtered = platforms.length > 0 || statuses.length > 0;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_18rem]">
@@ -209,7 +243,7 @@ export default async function CalendarPage({
                   ก่อนหน้า
                 </Link>
                 <Link
-                  href={`/calendar?view=${view}`}
+                  href={withF(`/calendar?view=${view}`)}
                   className="rounded-full border border-line px-3.5 py-1.5 text-muted transition-colors hover:border-brand hover:text-brand"
                 >
                   วันนี้
@@ -228,7 +262,7 @@ export default async function CalendarPage({
           {VIEWS.map((v) => (
             <Link
               key={v.value}
-              href={`/calendar?view=${v.value}&d=${d}`}
+              href={withF(`/calendar?view=${v.value}&d=${d}`)}
               aria-current={view === v.value ? 'page' : undefined}
               className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted hover:text-ink aria-[current=page]:border-brand aria-[current=page]:font-medium aria-[current=page]:text-ink"
             >
@@ -236,6 +270,10 @@ export default async function CalendarPage({
             </Link>
           ))}
         </nav>
+
+        <div className="mb-4">
+          <Filters platforms={platforms} statuses={statuses} />
+        </div>
 
         {view === 'list' ? (
           <ol className="space-y-2">
@@ -280,7 +318,11 @@ export default async function CalendarPage({
                 </li>
               );
             })}
-            {agenda.length === 0 && <li className="text-sm text-muted">ยังไม่มีกำหนดการในช่วงนี้</li>}
+            {agenda.length === 0 && (
+              <li className="text-sm text-muted">
+                {filtered ? 'ไม่มีรายการที่ตรงกับตัวกรองในช่วงนี้' : 'ยังไม่มีกำหนดการในช่วงนี้'}
+              </li>
+            )}
           </ol>
         ) : view === 'day' ? (
           <ol className="space-y-2">
@@ -332,7 +374,9 @@ export default async function CalendarPage({
                 );
               })}
               {agenda.length === 0 && (
-                <li className="text-sm text-muted">ยังไม่มีโพสต์ที่ตั้งเวลาในช่วงนี้</li>
+                <li className="text-sm text-muted">
+                  {filtered ? 'ไม่มีรายการที่ตรงกับตัวกรองในช่วงนี้' : 'ยังไม่มีโพสต์ที่ตั้งเวลาในช่วงนี้'}
+                </li>
               )}
             </ol>
             <div className="hidden md:block">

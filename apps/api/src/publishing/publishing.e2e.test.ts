@@ -273,6 +273,70 @@ describe('reschedule (CAL-01)', () => {
   });
 });
 
+describe('calendar filters (CAL-02)', () => {
+  const window = `from=${new Date(Date.now() - 3600_000).toISOString()}&to=${new Date(Date.now() + 2 * 3600_000).toISOString()}`;
+
+  it('AC: filters by platform and status; unknown values are rejected', async () => {
+    const line = await w
+      .as('admin')
+      .http('post', '/accounts/sandbox')
+      .send({ platform: 'line', name: 'oa ทดสอบ' })
+      .expect(201);
+    const fb = await scheduledVariant('แคลนดาร์ fb');
+    const lineCreated = await w
+      .as('editor')
+      .http('post', '/posts')
+      .send({
+        title: 'แคลนดาร์ line',
+        variants: [{ socialAccountId: line.body.id, caption: 'line ประกาศ' }],
+      });
+    const lineVariant = lineCreated.body.variants[0].id as string;
+    await w.as('editor').http('post', `/variants/${lineVariant}/submit`).expect(200);
+    await w.as('approver').http('post', `/variants/${lineVariant}/approve`).send({}).expect(200);
+    await w
+      .as('approver')
+      .http('post', `/variants/${lineVariant}/schedule`)
+      .send({ scheduledAt: inTwoMinutes() })
+      .expect(200);
+
+    // Other tests share this workspace and window, so assert membership, not exact sets.
+    const ids = (r: { body: { id: string }[] }) => r.body.map((v) => v.id);
+    const all = await w.as('approver').http('get', `/calendar?${window}`).expect(200);
+    expect(ids(all)).toContain(fb);
+    expect(ids(all)).toContain(lineVariant);
+
+    const onlyLine = await w
+      .as('approver')
+      .http('get', `/calendar?${window}&platforms=line`)
+      .expect(200);
+    expect(ids(onlyLine)).toContain(lineVariant);
+    expect(ids(onlyLine)).not.toContain(fb);
+    expect(onlyLine.body.every((v: { platform: string }) => v.platform === 'line')).toBe(true);
+
+    // Publish the fb one; a status filter then keeps only it.
+    expect(await run(fb)).toEqual({ status: 'succeeded' });
+    const publishedFb = await w
+      .as('approver')
+      .http('get', `/calendar?${window}&platforms=facebook&statuses=published`)
+      .expect(200);
+    expect(ids(publishedFb)).toContain(fb);
+    expect(
+      publishedFb.body.every(
+        (v: { platform: string; status: string }) =>
+          v.platform === 'facebook' && v.status === 'published',
+      ),
+    ).toBe(true);
+
+    const linePublished = await w
+      .as('approver')
+      .http('get', `/calendar?${window}&platforms=line&statuses=published`)
+      .expect(200);
+    expect(linePublished.body).toHaveLength(0);
+
+    await w.as('approver').http('get', `/calendar?${window}&platforms=myspace`).expect(400);
+  });
+});
+
 describe('Kill Switch (PUB-10)', () => {
   it('pauses everything scheduled, blocks resume while active, then releases', async () => {
     const id = await scheduledVariant('รอ kill switch');
