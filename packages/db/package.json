@@ -1,0 +1,30 @@
+{
+  "name": "@scm/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Drizzle schema, migrations and tenant-scoped DB access (RLS) for SCM.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "generate": "drizzle-kit generate",
+    "migrate": "node dist/migrate.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@scm/domain": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.15.6",
+    "drizzle-kit": "0.31.11"
+  }
+}

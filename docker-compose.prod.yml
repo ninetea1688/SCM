@@ -1,0 +1,145 @@
+# Production stack — single host, Docker Compose (ADR-0001). Usage: docs/runbooks/deploy.md
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+name: scm
+x-app: &app
+  image: scm-api:${SCM_VERSION:-latest}
+  build: { context: ., dockerfile: docker/api.Dockerfile }
+  restart: unless-stopped
+  env_file: .env.prod
+  environment:
+    NODE_ENV: production
+    DATABASE_URL: postgres://scm_app:${SCM_APP_DB_PASSWORD}@postgres:5432/scm
+    DATABASE_SYSTEM_URL: postgres://scm_system:${SCM_SYSTEM_DB_PASSWORD}@postgres:5432/scm
+    REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+    S3_ENDPOINT: http://s3:8333
+  depends_on:
+    migrate: { condition: service_completed_successfully }
+    redis: { condition: service_healthy }
+  logging: &logging
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      DOMAIN: ${DOMAIN}
+      MEDIA_DOMAIN: ${MEDIA_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api, web]
+    logging: *logging
+
+  web:
+    image: scm-web:${SCM_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args: { NEXT_PUBLIC_API_URL: "https://${DOMAIN}/api" }
+    restart: unless-stopped
+    environment: { NODE_ENV: production }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/login"]
+      interval: 30s
+      retries: 3
+    logging: *logging
+
+  api:
+    <<: *app
+    command: ["node", "--enable-source-maps", "dist/main.js"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health"]
+      interval: 15s
+      retries: 3
+
+  worker:
+    <<: *app
+    command: ["node", "--enable-source-maps", "dist/worker.js"]
+    # Scale horizontally: docker compose up -d --scale worker=2 (BullMQ guarantees one runner).
+
+  migrate:
+    image: scm-api:${SCM_VERSION:-latest}
+    build: { context: ., dockerfile: docker/api.Dockerfile }
+    env_file: .env.prod
+    environment:
+      DATABASE_OWNER_URL: postgres://scm:${POSTGRES_PASSWORD}@postgres:5432/scm
+    command: ["node", "node_modules/@scm/db/dist/migrate.js"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  postgres:
+    image: pgvector/pgvector:pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: scm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: scm
+      SCM_APP_DB_PASSWORD: ${SCM_APP_DB_PASSWORD}
+      SCM_SYSTEM_DB_PASSWORD: ${SCM_SYSTEM_DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./docker/postgres/10-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scm -d scm"]
+      interval: 5s
+      retries: 20
+    shm_size: 256m
+    logging: *logging
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    # noeviction: BullMQ must never lose delayed jobs to memory pressure.
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--maxmemory-policy",
+        "noeviction",
+        "--requirepass",
+        "${REDIS_PASSWORD}",
+      ]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
+      interval: 5s
+      retries: 20
+    logging: *logging
+
+  s3:
+    image: chrislusf/seaweedfs:latest
+    restart: unless-stopped
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json"]
+    volumes:
+      - s3data:/data
+      - ./docker/seaweedfs/s3.prod.json:/etc/seaweedfs/s3.json:ro
+    logging: *logging
+
+  backup:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      DATABASE_OWNER_URL: postgres://scm:${POSTGRES_PASSWORD}@postgres:5432/scm
+      BACKUP_PASSPHRASE: ${BACKUP_PASSPHRASE}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    entrypoint: ["sh", "-c", "apk add --no-cache openssl >/dev/null && /backup.sh"]
+    volumes:
+      - ./docker/backup.sh:/backup.sh:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+    depends_on:
+      postgres: { condition: service_healthy }
+    logging: *logging
+
+volumes:
+  pgdata:
+  redisdata:
+  s3data:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "scm",
+      "credentials": [{ "accessKey": "scm", "secretKey": "scm-s3-secret" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

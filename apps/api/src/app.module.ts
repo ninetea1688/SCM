@@ -1,0 +1,47 @@
+import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { LoggerModule } from 'nestjs-pino';
+import { AccountsController } from './accounts/accounts.controller';
+import { AccountsService } from './accounts/accounts.service';
+import { AuthModule } from './auth/auth.module';
+import { JwtGuard } from './auth/jwt.guard';
+import { CoreModule } from './common/core.module';
+import { pinoParams } from './common/logging';
+import { loadConfig } from './config';
+import { HealthController } from './health/health.controller';
+import { MediaController } from './media/media.controller';
+import { PostsController } from './posts/posts.controller';
+import { PostsService } from './posts/posts.service';
+import { PublishingModule } from './publishing/publishing.module';
+import { bullRoot } from './queue.config';
+import { TenantGuard } from './tenancy/tenant.guard';
+import { WebhooksController } from './webhooks/webhooks.controller';
+import { WorkspacesController } from './workspaces/workspaces.controller';
+import { WorkspacesService } from './workspaces/workspaces.service';
+
+/** HTTP API process. The worker process is WorkerModule (worker.module.ts). */
+@Module({
+  imports: [
+    LoggerModule.forRoot(pinoParams(loadConfig())),
+    CoreModule,
+    AuthModule,
+    bullRoot,
+    PublishingModule,
+  ],
+  controllers: [
+    HealthController,
+    WorkspacesController,
+    AccountsController,
+    PostsController,
+    MediaController,
+    WebhooksController,
+  ],
+  providers: [
+    { provide: APP_GUARD, useExisting: JwtGuard },
+    TenantGuard,
+    WorkspacesService,
+    AccountsService,
+    PostsService,
+  ],
+})
+export class AppModule {}

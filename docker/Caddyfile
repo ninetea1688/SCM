@@ -1,0 +1,33 @@
+# Automatic HTTPS (Let's Encrypt) — Meta/TikTok require a real domain + HTTPS (PRD §9.1).
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size 20MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	@api path /api/* /webhooks/* /health
+	handle @api {
+		reverse_proxy api:4000
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+	log {
+		output stdout
+		format json
+	}
+}
+
+# Media bucket on its own host so platforms can fetch signed URLs (MEDIA-06).
+{$MEDIA_DOMAIN} {
+	reverse_proxy s3:8333
+}

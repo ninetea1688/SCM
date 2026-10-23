@@ -1,0 +1,38 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env: { POSTGRES_USER: scm, POSTGRES_PASSWORD: scm, POSTGRES_DB: scm }
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U scm -d scm" --health-interval 3s --health-retries 20
+      redis:
+        image: redis:8-alpine
+        ports: ["6380:6379"]
+    env:
+      DATABASE_OWNER_URL: postgres://scm:scm@localhost:5433/scm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Create runtime DB roles (same as docker/postgres/10-roles.sh)
+        run: |
+          psql "$DATABASE_OWNER_URL" -c "CREATE ROLE scm_app LOGIN PASSWORD 'scm_app' NOBYPASSRLS"
+          psql "$DATABASE_OWNER_URL" -c "CREATE ROLE scm_system LOGIN PASSWORD 'scm_system' BYPASSRLS"
+          psql "$DATABASE_OWNER_URL" -c "CREATE EXTENSION IF NOT EXISTS vector"
+      - run: pnpm build:packages && pnpm db:migrate
+      - run: pnpm verify
+      - run: pnpm --filter @scm/web build
+      - name: Docker images build
+        run: |
+          docker build -f docker/api.Dockerfile -t scm-api:ci .
+          docker build -f docker/web.Dockerfile -t scm-web:ci .

@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+/* Design tokens. Components use these via Tailwind's theme — never raw hex in components. */
+@theme {
+  --font-sans: var(--font-thai), ui-sans-serif, system-ui, sans-serif;
+
+  --color-bg: #f7f7f5;
+  --color-surface: #ffffff;
+  --color-ink: #1c1f23;
+  --color-muted: #5f6670;
+  --color-line: #e3e4e1;
+  --color-brand: #0b6e4f;
+  --color-brand-ink: #ffffff;
+  --color-danger: #b42318;
+  --color-warn: #b54708;
+  --color-ok: #067647;
+  --color-on-danger: #ffffff;
+
+  /* Platform colours (CAL-02). */
+  --color-facebook: #1877f2;
+  --color-instagram: #c13584;
+  --color-tiktok: #111111;
+  --color-youtube: #e62117;
+  --color-line-oa: #06c755;
+
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #121416;
+    --color-surface: #1b1e21;
+    --color-ink: #eceef0;
+    --color-muted: #a1a8b1;
+    --color-line: #2c3136;
+    --color-brand: #3fbf8f;
+    --color-brand-ink: #0b1a14;
+  }
+}
+
+html {
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+/* NFR-10: visible focus for keyboard users. */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-brand);
+  outline-offset: var(--focus-ring-offset);
+}

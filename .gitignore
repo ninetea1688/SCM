@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.next/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+.claude/settings.local.json
+.claude/hooks/*.log
+docker/seaweedfs/s3.prod.json
+backups/
+.claude/hooks/.last-verify

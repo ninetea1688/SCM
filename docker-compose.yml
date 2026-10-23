@@ -1,0 +1,38 @@
+# Local development infrastructure only. Production: docker-compose.prod.yml
+name: scm-dev
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: scm
+      POSTGRES_PASSWORD: scm
+      POSTGRES_DB: scm
+      SCM_APP_DB_PASSWORD: scm_app
+      SCM_SYSTEM_DB_PASSWORD: scm_system
+    ports: ["5433:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./docker/postgres/10-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scm -d scm"]
+      interval: 3s
+      retries: 20
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports: ["6380:6379"]
+    volumes: [redisdata:/data]
+  s3:
+    image: chrislusf/seaweedfs:latest
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json"]
+    ports: ["8333:8333"]
+    volumes:
+      - s3data:/data
+      - ./docker/seaweedfs/s3.dev.json:/etc/seaweedfs/s3.json:ro
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["8025:8025", "1025:1025"]
+volumes:
+  pgdata:
+  redisdata:
+  s3data:
