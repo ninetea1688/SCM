@@ -189,6 +189,19 @@ export class PostsController {
     });
   }
 
+  /** CAL-01: drag-and-drop move of an already-scheduled variant (atomic). */
+  @Post('variants/:id/reschedule')
+  @HttpCode(200)
+  @RequirePermission('post.schedule')
+  reschedule(
+    @Tenant() t: TenantInfo,
+    @CurrentUser() u: AuthUser,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.posts.reschedule(t, u, id, parseInput(Schedule, b).scheduledAt!);
+  }
+
   @Post('variants/:id/unschedule')
   @HttpCode(200)
   @RequirePermission('post.schedule')

@@ -7,7 +7,7 @@ Evidence = the test that proves the AC. Update this file in the same change that
 
 ## Next up (P1, in order)
 
-1. CAL-01 drag-and-drop reschedule, week/day/list views; CAL-03 Thai holidays; CAL-05 quota hints in UI; CONN-06 quota column + reconnect button
+1. CONN-06 quota column + reconnect button in `/accounts`; MEDIA-02 search/folder/tag UI leftovers
 2. NOTI-01 email channel; OPS-02/03/04 Sentry + Prometheus metrics + status page
 3. PDPA-02 data-subject requests; Meta deletion job processing (INT-04 currently records only)
 4. Staging stack on Docker Compose (same `docker-compose.prod.yml`, separate host/env)
@@ -37,10 +37,10 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | POST-02 Per-platform options | 🟡 | schema + validation; UI only for YouTube title |
 | POST-04 validate() (moved to P1, ADR-0002) | ✅ | `rules.test.ts`, e2e "POST-04 AC" |
 | APPR-01/02 single-level approval (ADR-0002) | ✅ | e2e "approval workflow" |
-| CAL-01 Calendar views | 🟡 | month + mobile agenda; drag-drop/week/day pending |
+| CAL-01 Calendar views | ✅ | month/week/day/list + mobile agenda; drag-and-drop → atomic `POST /variants/:id/reschedule` (e2e "reschedule (CAL-01)": new job armed, old wake-up cancelled, lead-time + kill-switch guards) |
 | CAL-02 Filters + colours | 🟡 | API filters + colours; UI filters pending |
-| CAL-03 BE/CE, Asia/Bangkok | 🟡 | `thai-date.ts`; holidays pending |
-| CAL-05 Quota warning | 🟡 | enforced at schedule (409); UI hint pending |
+| CAL-03 BE/CE, Asia/Bangkok | ✅ | `thai-date.ts` + `thai-holidays.ts` (fixed dates, weekend observation, annual table 2569 sourced from the cabinet resolution — re-verify yearly); shown in month/week/list views |
+| CAL-05 Quota warning | ✅ | enforced at schedule (409); day cells show a "ใกล้โควตา n/limit" chip at ≥80% of `DAILY_PUBLISH_LIMITS` |
 | PUB-01 Own scheduler | ✅ | BullMQ delayed job; smoke: fired 0.14 s after slot |
 | PUB-02 Adapters FB/IG/LINE | 🟡 | FB + IG + LINE live adapters, unit-tested with mocked HTTP (`adapters.test.ts`); IG: containers → `media_publish`, carousel, `prepare()` pre-stage (e2e), `reconcile`, live `content_publishing_limit`. Untested against real platform APIs (Meta App pending) |
 | PUB-03 Retry + backoff | ✅ | `publish-job.test.ts`, e2e "PUB-03" |

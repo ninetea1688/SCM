@@ -229,6 +229,50 @@ describe('prepare() pre-stage (ADR-0004, PUB-02)', () => {
   });
 });
 
+describe('reschedule (CAL-01)', () => {
+  it('moves a scheduled variant in one call: new job armed, old wake-up cancelled, still scheduled', async () => {
+    const id = await scheduledVariant('ลากย้าย');
+    const firstJob = await jobFor(id);
+
+    const nextDay = new Date(Date.now() + 26 * 3600_000).toISOString();
+    const r = await w
+      .as('approver')
+      .http('post', `/variants/${id}/reschedule`)
+      .send({ scheduledAt: nextDay })
+      .expect(200);
+    expect(r.body.status).toBe('scheduled');
+
+    // Old job cancelled; a new queued job exists for the new slot with a fresh key.
+    expect(firstJob!.status).toBe('queued'); // snapshot before
+    const jobs = await ownerDb.select().from(publishJobs).where(eq(publishJobs.variantId, id));
+    const active = jobs.filter((j) => j.status === 'queued');
+    expect(active).toHaveLength(1);
+    expect(active[0]!.runAt.toISOString()).toBe(nextDay);
+    expect(active[0]!.idempotencyKey).not.toBe(firstJob!.idempotencyKey);
+
+    const [variant] = await ownerDb.select().from(postVariants).where(eq(postVariants.id, id));
+    expect(variant!.status).toBe('scheduled');
+    expect(variant!.scheduledAt!.toISOString()).toBe(nextDay);
+  });
+
+  it('rejects a too-soon slot and a reschedule while the Kill Switch is on', async () => {
+    const id = await scheduledVariant('เลื่อนไม่ได้');
+    await w
+      .as('approver')
+      .http('post', `/variants/${id}/reschedule`)
+      .send({ scheduledAt: new Date().toISOString() })
+      .expect(400); // schedule_too_soon
+
+    await w.as('approver').http('post', '/kill-switch').send({ active: true }).expect(200);
+    await w
+      .as('approver')
+      .http('post', `/variants/${id}/reschedule`)
+      .send({ scheduledAt: new Date(Date.now() + 3600_000).toISOString() })
+      .expect(409); // kill_switch_active (via unschedule/schedule guard)
+    await w.as('approver').http('post', '/kill-switch').send({ active: false }).expect(200);
+  });
+});
+
 describe('Kill Switch (PUB-10)', () => {
   it('pauses everything scheduled, blocks resume while active, then releases', async () => {
     const id = await scheduledVariant('รอ kill switch');

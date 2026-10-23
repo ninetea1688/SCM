@@ -1,11 +1,19 @@
 /**
- * CAL-01/02/03 (P1): month view in Asia/Bangkok with Buddhist-Era labels, platform colours,
- * status badges and an unscheduled backlog. Drag-and-drop rescheduling is next (STATUS.md).
+ * CAL-01/02/03/05 (P1): month/week/day/list views, Bangkok time with พ.ศ. labels,
+ * Thai government holidays, drag-and-drop rescheduling (board.tsx) and per-day
+ * quota hints when a platform nears its 24h cap.
  */
-import type { Platform, VariantStatus } from '@scm/domain';
+import {
+  DAILY_PUBLISH_LIMITS,
+  DEFAULT_QUOTA_WARN_RATIO,
+  type Platform,
+  thaiHolidays,
+  type VariantStatus,
+} from '@scm/domain';
 import Link from 'next/link';
 import { PlatformDot, StatusBadge } from '@/components/badges';
 import { load } from '@/lib/load';
+import { Board, type BoardDay, type BoardItem } from './board';
 
 interface CalItem {
   id: string;
@@ -24,17 +32,31 @@ interface BacklogItem {
 }
 
 const BKK_OFFSET_MS = 7 * 3600_000; // Asia/Bangkok has no DST.
-const WEEKDAYS = ['จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.'];
+type View = 'month' | 'week' | 'day' | 'list';
+const VIEWS: { value: View; label: string }[] = [
+  { value: 'month', label: 'เดือน' },
+  { value: 'week', label: 'สัปดาห์' },
+  { value: 'day', label: 'วัน' },
+  { value: 'list', label: 'รายการ' },
+];
+
 const monthLabel = new Intl.DateTimeFormat('th-TH-u-ca-buddhist', {
   timeZone: 'Asia/Bangkok',
   month: 'long',
+  year: 'numeric',
+});
+const rangeLabel = new Intl.DateTimeFormat('th-TH-u-ca-buddhist', {
+  timeZone: 'Asia/Bangkok',
+  day: 'numeric',
+  month: 'short',
   year: 'numeric',
 });
 const dayLabel = new Intl.DateTimeFormat('th-TH-u-ca-buddhist', {
   timeZone: 'Asia/Bangkok',
   weekday: 'long',
   day: 'numeric',
-  month: 'short',
+  month: 'long',
+  year: 'numeric',
 });
 const timeLabel = new Intl.DateTimeFormat('th-TH', {
   timeZone: 'Asia/Bangkok',
@@ -43,151 +65,281 @@ const timeLabel = new Intl.DateTimeFormat('th-TH', {
   hour12: false,
 });
 
-function parseMonth(m: string | undefined): { y: number; mo: number } {
-  const match = m?.match(/^(\d{4})-(\d{2})$/);
-  if (match) return { y: Number(match[1]), mo: Number(match[2]) };
-  const now = new Date(Date.now() + BKK_OFFSET_MS);
-  return { y: now.getUTCFullYear(), mo: now.getUTCMonth() + 1 };
-}
-
+const bkkDate = (utcMs: number) => new Date(utcMs + BKK_OFFSET_MS); // read with getUTC*
 const bkkMidnight = (y: number, mo: number, d: number) =>
   new Date(Date.UTC(y, mo - 1, d) - BKK_OFFSET_MS);
-/** Stable keys for the empty cells that pad the first and last week. */
-const padKeys = (side: string, n: number) => Array.from({ length: n }, (_, i) => `${side}-${i}`);
-const fmt = (y: number, mo: number) => `${y}-${String(mo).padStart(2, '0')}`;
+const dayKeyOf = (iso: string) => {
+  const d = bkkDate(new Date(iso).getTime());
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+};
+const addDays = (key: string, n: number) => {
+  const [y, m, d] = key.split('-').map(Number);
+  return bkkDate(Date.UTC(y!, m! - 1, d!) + n * 86400_000)
+    .toISOString()
+    .slice(0, 10);
+};
+
+function parseAnchor(q: { view?: string; d?: string }): { view: View; d: string } {
+  const view = (VIEWS.some((v) => v.value === q.view) ? q.view : 'month') as View;
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(q.d ?? '') ? q.d! : new Date().toISOString().slice(0, 10);
+  return { view, d };
+}
+
+/** CAL-05: warn chip when a day holds ≥ warnRatio of a platform's 24h cap. */
+function quotaWarnFor(items: BoardItem[]): BoardDay['quotaWarn'] {
+  const byPlatform = new Map<Platform, number>();
+  for (const it of items) byPlatform.set(it.platform, (byPlatform.get(it.platform) ?? 0) + 1);
+  for (const [platform, used] of byPlatform) {
+    const limit = DAILY_PUBLISH_LIMITS[`${platform}:any`];
+    if (limit && used >= limit * DEFAULT_QUOTA_WARN_RATIO) return { platform, used, limit };
+  }
+  return undefined;
+}
+
+function boardDays(keys: string[], byDay: Map<string, BoardItem[]>, todayKey: string): BoardDay[] {
+  return keys.map((key) => {
+    const [y, m, d] = key.split('-').map(Number);
+    const holiday = thaiHolidays(y!).get(
+      `${String(m!).padStart(2, '0')}-${String(d!).padStart(2, '0')}`,
+    );
+    const items = byDay.get(key) ?? [];
+    return {
+      key,
+      dayNum: d!,
+      isToday: key === todayKey,
+      holidayName: holiday?.nameTh,
+      isDayOff: holiday !== undefined && holiday.kind !== 'observance',
+      items,
+      quotaWarn: quotaWarnFor(items),
+    };
+  });
+}
 
 export default async function CalendarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ m?: string }>;
+  searchParams: Promise<{ view?: string; d?: string }>;
 }) {
-  const { m } = await searchParams;
-  const { y, mo } = parseMonth(m);
-  const from = bkkMidnight(y, mo, 1);
-  const to = bkkMidnight(mo === 12 ? y + 1 : y, mo === 12 ? 1 : mo + 1, 1);
-  const here = `/calendar?m=${fmt(y, mo)}`;
+  const q = await searchParams;
+  const { view, d } = parseAnchor(q);
 
+  // Visible range (BKK midnights, exclusive `to`).
+  const [y, mo, dd] = d.split('-').map(Number);
+  let from: Date;
+  let to: Date;
+  if (view === 'month') {
+    from = bkkMidnight(y!, mo!, 1);
+    to = mo === 12 ? bkkMidnight(y! + 1, 1, 1) : bkkMidnight(y!, mo! + 1, 1);
+  } else if (view === 'week') {
+    const monday = bkkDate(
+      Date.UTC(y!, mo! - 1, dd!) -
+        ((new Date(Date.UTC(y!, mo! - 1, dd!)).getUTCDay() + 6) % 7) * 86400_000,
+    );
+    from = new Date(monday.getTime() - BKK_OFFSET_MS);
+    to = new Date(from.getTime() + 7 * 86400_000);
+  } else if (view === 'day') {
+    from = bkkMidnight(y!, mo!, dd!);
+    to = new Date(from.getTime() + 86400_000);
+  } else {
+    from = bkkMidnight(y!, mo!, dd!);
+    to = new Date(from.getTime() + 31 * 86400_000);
+  }
+
+  const here = `/calendar?view=${view}&d=${d}`;
   const [items, backlog] = await Promise.all([
     load<CalItem[]>(`/calendar?from=${from.toISOString()}&to=${to.toISOString()}`, here),
     load<BacklogItem[]>('/backlog', here),
   ]);
 
-  const daysInMonth = new Date(Date.UTC(y, mo, 0)).getUTCDate();
-  const firstWeekday = (new Date(Date.UTC(y, mo - 1, 1)).getUTCDay() + 6) % 7; // Monday = 0
-  const byDay = new Map<number, CalItem[]>();
+  const byDay = new Map<string, BoardItem[]>();
   for (const it of items) {
-    const local = new Date(new Date(it.scheduledAt).getTime() + BKK_OFFSET_MS);
-    const d = local.getUTCDate();
-    byDay.set(d, [...(byDay.get(d) ?? []), it]);
+    const k = dayKeyOf(it.scheduledAt);
+    byDay.set(k, [...(byDay.get(k) ?? []), it]);
   }
-  const prev = mo === 1 ? fmt(y - 1, 12) : fmt(y, mo - 1);
-  const next = mo === 12 ? fmt(y + 1, 1) : fmt(y, mo + 1);
-  const todayLocal = new Date(Date.now() + BKK_OFFSET_MS);
-  const isThisMonth = todayLocal.getUTCFullYear() === y && todayLocal.getUTCMonth() + 1 === mo;
+  const todayKey = new Date().toISOString().slice(0, 10);
+
+  // Grid keys for the board (month pads to whole weeks, Monday-first).
+  let gridKeys: string[] = [];
+  if (view === 'month') {
+    const first = new Date(Date.UTC(y!, mo! - 1, 1));
+    const lead = (first.getUTCDay() + 6) % 7;
+    const daysInMonth = new Date(Date.UTC(y!, mo!, 0)).getUTCDate();
+    const start = addDays(`${y}-${String(mo!).padStart(2, '0')}-01`, -lead);
+    gridKeys = Array.from({ length: Math.ceil((lead + daysInMonth) / 7) * 7 }, (_, i) =>
+      addDays(start, i),
+    );
+  } else if (view === 'week') {
+    gridKeys = Array.from({ length: 7 }, (_, i) => addDays(from.toISOString().slice(0, 10), i));
+  }
+
+  // Step the anchor for prev/next per view.
+  const step = view === 'month' ? 0 : view === 'week' ? 7 : 1;
+  const monthStep = (n: number) => {
+    const dt = new Date(Date.UTC(y!, mo! - 1 + n, 1));
+    return `/calendar?view=month&d=${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-01`;
+  };
+  const shift = (n: number) => `/calendar?view=${view}&d=${addDays(d, n)}`;
+
+  const title =
+    view === 'month'
+      ? monthLabel.format(new Date(Date.UTC(y!, mo! - 1, 15)))
+      : view === 'week'
+        ? `${rangeLabel.format(from)} – ${rangeLabel.format(new Date(to.getTime() - 86400_000))}`
+        : view === 'day'
+          ? dayLabel.format(from)
+          : 'กำหนดการถัดไป 31 วัน';
+  const christianYear = view === 'month' ? `(${y})` : '';
+
+  const agenda = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_18rem]">
       <section aria-labelledby="cal-title">
-        <div className="mb-4 flex items-center gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <h1 id="cal-title" className="text-xl font-semibold">
-            {monthLabel.format(new Date(Date.UTC(y, mo - 1, 15)))}
-            <span className="ml-2 text-sm font-normal text-muted">({y})</span>
+            {title} <span className="text-sm font-normal text-muted">{christianYear}</span>
           </h1>
-          <div className="ml-auto flex gap-1 whitespace-nowrap text-sm">
-            <Link
-              href={`/calendar?m=${prev}`}
-              className="rounded-full border border-line px-3.5 py-1.5 text-muted transition-colors hover:border-brand hover:text-brand"
-            >
-              ก่อนหน้า
-            </Link>
-            <Link
-              href="/calendar"
-              className="rounded-full border border-line px-3.5 py-1.5 text-muted transition-colors hover:border-brand hover:text-brand"
-            >
-              เดือนนี้
-            </Link>
-            <Link
-              href={`/calendar?m=${next}`}
-              className="rounded-full border border-line px-3.5 py-1.5 text-muted transition-colors hover:border-brand hover:text-brand"
-            >
-              ถัดไป
-            </Link>
-          </div>
+          <nav aria-label="เปลี่ยนช่วงเวลา" className="ml-auto flex gap-1 text-sm">
+            {view !== 'list' && (
+              <>
+                <Link
+                  href={view === 'month' ? monthStep(-1) : shift(-step)}
+                  className="rounded-full border border-line px-3.5 py-1.5 text-muted transition-colors hover:border-brand hover:text-brand"
+                >
+                  ก่อนหน้า
+                </Link>
+                <Link
+                  href={`/calendar?view=${view}`}
+                  className="rounded-full border border-line px-3.5 py-1.5 text-muted transition-colors hover:border-brand hover:text-brand"
+                >
+                  วันนี้
+                </Link>
+                <Link
+                  href={view === 'month' ? monthStep(1) : shift(step)}
+                  className="rounded-full border border-line px-3.5 py-1.5 text-muted transition-colors hover:border-brand hover:text-brand"
+                >
+                  ถัดไป
+                </Link>
+              </>
+            )}
+          </nav>
         </div>
-        <ol className="space-y-2 md:hidden" aria-label="รายการโพสต์ของเดือน">
-          {[...byDay.entries()]
-            .sort(([a], [b]) => a - b)
-            .map(([d, dayItems]) => (
-              <li key={d} className="rounded-xl border border-line bg-surface p-3">
-                <p className="mb-2 text-sm font-medium">
-                  {dayLabel.format(new Date(Date.UTC(y, mo - 1, d, 5)))}
-                </p>
-                <ul className="space-y-2">
-                  {dayItems.map((it) => (
-                    <li key={it.id}>
-                      <Link
-                        href={`/posts/${it.postId}`}
-                        className="flex items-center gap-2 text-sm"
+        <nav aria-label="มุมมอง" className="mb-4 flex gap-1 border-b border-line text-sm">
+          {VIEWS.map((v) => (
+            <Link
+              key={v.value}
+              href={`/calendar?view=${v.value}&d=${d}`}
+              aria-current={view === v.value ? 'page' : undefined}
+              className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted hover:text-ink aria-[current=page]:border-brand aria-[current=page]:font-medium aria-[current=page]:text-ink"
+            >
+              {v.label}
+            </Link>
+          ))}
+        </nav>
+
+        {view === 'list' ? (
+          <ol className="space-y-2">
+            {agenda.map(([k, dayItems]) => {
+              const [ly, lm, ld] = k.split('-').map(Number);
+              const holiday = thaiHolidays(ly!).get(
+                `${String(lm!).padStart(2, '0')}-${String(ld!).padStart(2, '0')}`,
+              );
+              return (
+                <li key={k} className="rounded-xl border border-line bg-surface p-3">
+                  <p className="mb-1 text-sm font-medium">
+                    {dayLabel.format(bkkMidnight(ly!, lm!, ld!))}
+                    {holiday && (
+                      <span
+                        className={
+                          holiday.kind === 'observance'
+                            ? 'ml-2 text-xs text-muted'
+                            : 'ml-2 text-xs text-danger'
+                        }
                       >
-                        <PlatformDot platform={it.platform} />
-                        <span className="text-muted">
-                          {timeLabel.format(new Date(it.scheduledAt))}
-                        </span>
-                        <span className="line-clamp-1 flex-1">{it.title}</span>
-                        <StatusBadge status={it.status} />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+                        {holiday.nameTh}
+                      </span>
+                    )}
+                  </p>
+                  <ul className="space-y-1.5">
+                    {dayItems.map((it) => (
+                      <li key={it.id}>
+                        <Link
+                          href={`/posts/${it.postId}`}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <PlatformDot platform={it.platform} />
+                          <span className="text-muted">
+                            {timeLabel.format(new Date(it.scheduledAt))}
+                          </span>
+                          <span className="line-clamp-1 flex-1">{it.title}</span>
+                          <StatusBadge status={it.status} />
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              );
+            })}
+            {agenda.length === 0 && <li className="text-sm text-muted">ยังไม่มีกำหนดการในช่วงนี้</li>}
+          </ol>
+        ) : view === 'day' ? (
+          <ol className="space-y-2">
+            {(byDay.get(d) ?? []).map((it) => (
+              <li key={it.id} className="rounded-xl border border-line bg-surface p-3 shadow-sm">
+                <Link href={`/posts/${it.postId}`} className="flex items-center gap-2 text-sm">
+                  <PlatformDot platform={it.platform} />
+                  <span className="font-medium">{timeLabel.format(new Date(it.scheduledAt))}</span>
+                  <span className="line-clamp-1 flex-1">{it.title}</span>
+                  <StatusBadge status={it.status} />
+                </Link>
               </li>
             ))}
-          {byDay.size === 0 && <li className="text-sm text-muted">ยังไม่มีโพสต์ที่ตั้งเวลาในเดือนนี้</li>}
-        </ol>
-        <div className="hidden grid-cols-7 overflow-hidden rounded-xl border border-line bg-line text-sm [gap:1px] md:grid">
-          {WEEKDAYS.map((w) => (
-            <div
-              key={w}
-              className="bg-surface px-2 py-1.5 text-center text-xs font-medium text-muted"
-            >
-              {w}
+            {(byDay.get(d) ?? []).length === 0 && (
+              <li className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-muted">
+                ไม่มีโพสต์ในวันนี้
+              </li>
+            )}
+          </ol>
+        ) : (
+          <>
+            {/* Mobile agenda (NFR-07): the drag board is desktop-only. */}
+            <ol className="space-y-2 md:hidden" aria-label="รายการโพสต์">
+              {agenda.map(([k, dayItems]) => {
+                const [ly, lm, ld] = k.split('-').map(Number);
+                return (
+                  <li key={k} className="rounded-xl border border-line bg-surface p-3">
+                    <p className="mb-2 text-sm font-medium">
+                      {dayLabel.format(bkkMidnight(ly!, lm!, ld!))}
+                    </p>
+                    <ul className="space-y-2">
+                      {dayItems.map((it) => (
+                        <li key={it.id}>
+                          <Link
+                            href={`/posts/${it.postId}`}
+                            className="flex items-center gap-2 text-sm"
+                          >
+                            <PlatformDot platform={it.platform} />
+                            <span className="text-muted">
+                              {timeLabel.format(new Date(it.scheduledAt))}
+                            </span>
+                            <span className="line-clamp-1 flex-1">{it.title}</span>
+                            <StatusBadge status={it.status} />
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                );
+              })}
+              {agenda.length === 0 && (
+                <li className="text-sm text-muted">ยังไม่มีโพสต์ที่ตั้งเวลาในช่วงนี้</li>
+              )}
+            </ol>
+            <div className="hidden md:block">
+              <Board days={boardDays(gridKeys, byDay, todayKey)} week={view === 'week'} />
             </div>
-          ))}
-          {padKeys('lead', firstWeekday).map((k) => (
-            <div key={k} className="min-h-28 bg-bg" />
-          ))}
-          {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => {
-            const isToday = isThisMonth && todayLocal.getUTCDate() === d;
-            const dayItems = byDay.get(d) ?? [];
-            return (
-              <div key={d} className="min-h-28 space-y-1 bg-surface p-1.5">
-                <div
-                  className={`text-xs ${isToday ? 'inline-grid size-6 place-items-center rounded-full bg-brand text-brand-ink' : 'text-muted'}`}
-                >
-                  {d}
-                </div>
-                {dayItems.map((it) => (
-                  <Link
-                    key={it.id}
-                    href={`/posts/${it.postId}`}
-                    className="block rounded-md border border-line px-1.5 py-1 hover:border-brand"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <PlatformDot platform={it.platform} />
-                      <span className="text-xs text-muted">
-                        {timeLabel.format(new Date(it.scheduledAt))}
-                      </span>
-                    </span>
-                    <span className="line-clamp-1 text-xs">{it.title}</span>
-                    <StatusBadge status={it.status} />
-                  </Link>
-                ))}
-              </div>
-            );
-          })}
-          {padKeys('tail', (7 - ((firstWeekday + daysInMonth) % 7)) % 7).map((k) => (
-            <div key={k} className="min-h-28 bg-bg" />
-          ))}
-        </div>
+          </>
+        )}
       </section>
 
       <aside aria-labelledby="backlog-title" className="space-y-3">
@@ -208,7 +360,7 @@ export default async function CalendarPage({
             <li key={b.id}>
               <Link
                 href={`/posts/${b.postId}`}
-                className="block rounded-lg border border-line bg-surface p-3 hover:border-brand"
+                className="block rounded-lg border border-line bg-surface p-3 transition-colors hover:border-brand"
               >
                 <span className="flex items-center gap-2">
                   <PlatformDot platform={b.platform} />

@@ -396,6 +396,94 @@ export class PostsService {
     return result;
   }
 
+  /**
+   * CAL-01: drag-and-drop reschedule — `unschedule` + `schedule` in ONE transaction
+   * (the old wake-up is cancelled and the new one armed atomically). Same guards
+   * as act('schedule'): lead time, 24h quota, Kill Switch; same permission.
+   */
+  async reschedule(t: TenantInfo, u: AuthUser, variantId: string, scheduledAt: Date) {
+    const afterCommit: (() => Promise<void>)[] = [];
+    const result = await this.tx(t, u, async (tx) => {
+      const v = await this.variantForUpdate(tx, variantId);
+      await this.account(tx, t, v.socialAccountId, 'post.schedule');
+      const [ws] = await tx.select().from(workspaces).where(eq(workspaces.id, t.workspaceId));
+      const killSwitchActive = ws?.killSwitch ?? false;
+
+      if (scheduledAt.getTime() < Date.now() + MIN_LEAD_MS) {
+        throw new BadRequestException({
+          code: 'schedule_too_soon',
+          message: 'ต้องตั้งเวลาล่วงหน้าอย่างน้อย 1 นาที',
+        });
+      }
+      const off = transitionVariant(v.status as VariantStatus, 'unschedule', { killSwitchActive });
+      if (!off.ok) {
+        throw new ConflictException({ code: off.error.code, status: v.status });
+      }
+      const quota = await this.dailyQuota(tx, v, scheduledAt);
+      if (quota?.level === 'exceeded') {
+        throw new ConflictException({
+          code: 'quota_exceeded',
+          message: `บัญชีนี้มีโพสต์ใน 24 ชม. ครบโควตาแล้ว (${quota.limit})`,
+        });
+      }
+      const on = transitionVariant(off.value.to, 'schedule', {
+        killSwitchActive,
+        approvedVersionIsCurrent: v.approvedVersion === v.version,
+      });
+      if (!on.ok) {
+        throw new ConflictException({ code: on.error.code, status: v.status });
+      }
+
+      await tx
+        .update(postVariants)
+        .set({ status: on.value.to, scheduledAt, updatedAt: new Date() })
+        .where(eq(postVariants.id, v.id));
+      if (off.value.cancelPendingJob) afterCommit.push(await this.cancelJobs(tx, v.id));
+
+      const key = idempotencyKey(v.id, v.version, scheduledAt.toISOString());
+      const [job] = await tx
+        .insert(publishJobs)
+        .values({
+          workspaceId: t.workspaceId,
+          variantId: v.id,
+          idempotencyKey: key,
+          runAt: scheduledAt,
+        })
+        .onConflictDoUpdate({
+          target: publishJobs.idempotencyKey,
+          set: { status: 'queued', runAt: scheduledAt, updatedAt: new Date() },
+        })
+        .returning();
+      afterCommit.push(() =>
+        this.queue.wakeAt(
+          { publishJobId: job!.id, workspaceId: t.workspaceId },
+          scheduledAt,
+          job!.attempts,
+        ),
+      );
+      afterCommit.push(() =>
+        this.queue.wakeAt(
+          { publishJobId: job!.id, workspaceId: t.workspaceId, phase: 'prepare' },
+          new Date(scheduledAt.getTime() - this.cfg.PUBLISH_PREPARE_LEAD_SEC * 1000),
+          'pre',
+        ),
+      );
+
+      await this.audit.record(tx, {
+        workspaceId: t.workspaceId,
+        actorUserId: u.userId,
+        action: 'variant.rescheduled',
+        targetType: 'post_variant',
+        targetId: v.id,
+        before: { scheduledAt: v.scheduledAt?.toISOString() ?? null },
+        after: { scheduledAt: scheduledAt.toISOString() },
+      });
+      return { status: on.value.to, quota };
+    });
+    for (const fn of afterCommit) await fn();
+    return result;
+  }
+
   /** PUB-10: pause every scheduled variant in one click; release later. */
   async setKillSwitch(t: TenantInfo, u: AuthUser, active: boolean) {
     return this.tx(t, u, async (tx) => {

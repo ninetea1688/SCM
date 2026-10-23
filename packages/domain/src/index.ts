@@ -7,5 +7,6 @@ export * from './rbac.js';
 export * from './redact.js';
 export * from './result.js';
 export * from './thai-date.js';
+export * from './thai-holidays.js';
 export * from './validation.js';
 export * from './variant-state.js';
