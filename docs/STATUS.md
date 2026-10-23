@@ -1,13 +1,15 @@
 # Delivery status — traceability matrix
 
-**Current phase: P1 MVP (walking skeleton done).** Last updated 2026-10-23 (PUB-02 Instagram).
+**Current phase: P1 MVP (feature-complete on code).** Last updated 2026-10-24 (OPS-04 watch).
 Legend: ✅ done + tested · 🟡 partial · ⬜ not started · ⏸ blocked (reason).
 Evidence = the test that proves the AC. Update this file in the same change that moves a row
 (the `/implement-req` skill does it). The SessionStart hook prints the "Next up" list.
 
 ## Next up (P1, in order)
 
-1. Staging stack on Docker Compose (same `docker-compose.prod.yml`, separate host/env)
+1. Staging **host** (owner action): `docs/runbooks/deploy.md` §Staging — the stack itself is
+   done and boot-verified locally (same `docker-compose.prod.yml`, `.env.staging`, sandbox
+   publisher via `ALLOW_FAKE_PUBLISHER`, seed via the `migrate` service).
 
 ## P1 requirements
 
@@ -31,32 +33,32 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | MEDIA-04 FFmpeg/Sharp conversion | ✅ | `media-convert.e2e.test.ts` (7 tests, mutation-checked): HEIC tile grid → full JPEG, GPS/EXIF stripped, PNG flattened, HEVC .mov → H.264/AAC faststart, compliant MP4 remuxed only, oversize scaled to 1920, IG publish receives the JPEG. ADR-0009 |
 | MEDIA-06 Short-lived signed URLs | ✅ | `StorageService.presignGet` (TTL from config), public endpoint split; originals signed as attachment only |
 | POST-01 Post → variants | ✅ | e2e, composer UI |
-| POST-02 Per-platform options | 🟡 | schema + validation; UI only for YouTube title |
+| POST-02 Per-platform options | ✅ | schema + validation; shared `VariantOptions` UI in composer + variant card (IG format, FB format, YouTube title, LINE broadcast/narrowcast) |
 | POST-04 validate() (moved to P1, ADR-0002) | ✅ | `rules.test.ts`, e2e "POST-04 AC" |
 | APPR-01/02 single-level approval (ADR-0002) | ✅ | e2e "approval workflow" |
 | CAL-01 Calendar views | ✅ | month/week/day/list + mobile agenda; drag-and-drop → atomic `POST /variants/:id/reschedule` (e2e "reschedule (CAL-01)": new job armed, old wake-up cancelled, lead-time + kill-switch guards) |
-| CAL-02 Filters + colours | 🟡 | API filters + colours; UI filters pending |
+| CAL-02 Filters + colours | ✅ | API filters (`platforms`/`statuses`, `calendar filters (CAL-02)` e2e) + UI chip groups in `/calendar` (selection in the URL, survives navigation) |
 | CAL-03 BE/CE, Asia/Bangkok | ✅ | `thai-date.ts` + `thai-holidays.ts` (fixed dates, weekend observation, annual table 2569 sourced from the cabinet resolution — re-verify yearly); shown in month/week/list views |
 | CAL-05 Quota warning | ✅ | enforced at schedule (409); day cells show a "ใกล้โควตา n/limit" chip at ≥80% of `DAILY_PUBLISH_LIMITS` |
 | PUB-01 Own scheduler | ✅ | BullMQ delayed job; smoke: fired 0.14 s after slot |
 | PUB-02 Adapters FB/IG/LINE | 🟡 | FB + IG + LINE live adapters, unit-tested with mocked HTTP (`adapters.test.ts`); IG: containers → `media_publish`, carousel, `prepare()` pre-stage (e2e), `reconcile`, live `content_publishing_limit`. Untested against real platform APIs (Meta App pending) |
 | PUB-03 Retry + backoff | ✅ | `publish-job.test.ts`, e2e "PUB-03" |
 | PUB-04 No duplicates | ✅ | ADR-0004; e2e "network lost … never a duplicate" |
-| PUB-05 Quota counting | 🟡 | daily cap check; per-platform live quota (`getQuota`) not persisted yet |
+| PUB-05 Quota counting | ✅ | local daily cap at schedule (409) + live platform readings persisted in `quota_usage` (dashboard view + hourly sweep; `QuotaRecorder` e2e) |
 | PUB-06 external id + permalink | ✅ | e2e |
 | PUB-07 Publish log, redacted | ✅ | `publish_attempts`, `redact()` tests, adapter trace test |
-| PUB-08 LINE recipients/quota preview | 🟡 | `LineAdapter.followerCount/getQuota`; endpoint + UI pending |
+| PUB-08 LINE recipients/quota preview | ✅ | `GET /accounts/:id/publish-preview` (targeted reach + monthly quota, `publish-preview` e2e) + "ตัวอย่างก่อนส่ง" on the LINE variant card before scheduling; Narrowcast needs Audiences (CRM-03, P5) |
 | PUB-10 Kill Switch (pulled into P1) | ✅ | e2e "Kill Switch" |
 | NOTI-01 In-app + team LINE + email | ✅ | publish_failed/account_disconnected alert in-app + team LINE + email via SMTP (Mailpit in dev, `ops.e2e.test.ts`) |
 | NOTI-02 Types (P1 subset) | 🟡 | publish_failed done |
 | OPS-01 Immutable audit log | ✅ | rls.test "append-only" |
-| OPS-02/03/04 Observability | 🟡 | pino logs, `/health`; OPS-03 ✅ Prometheus `/metrics` (publish outcomes per platform, queue depth); OPS-04 🟡 public `/status` page done, LINE threshold alert pending; OPS-02 🟡 Sentry SDK wired behind `SENTRY_DSN` (untested — needs DSN) |
+| OPS-02/03/04 Observability | 🟡 | pino logs, `/health`; OPS-03 ✅ Prometheus `/metrics` (publish outcomes per platform, queue depth); OPS-04 ✅ `/status` page + worker `StatusWatchJob` alerts owners/admins in-app + ONE team LINE push on component-down/backlog threshold, recovery notice, edge-triggered (`status-watch.e2e.test.ts`); OPS-02 🟡 Sentry SDK wired behind `SENTRY_DSN` (untested — needs DSN) |
 | OPS-07 Platform changelog process | 🟡 | `platform-researcher` agent + `/verify-platform-limits` skill |
 | ANA-03 Event log | ✅ | ADR-0007 |
 | INT-04 Meta data-deletion callback | ✅ | callback verified + recorded; worker job deletes matching inbound events and closes the request (`pdpa.e2e.test.ts`) |
 | SEC-01/03 | ✅ | crypto, webhook signature tests |
 | PDPA-01/02/03 | 🟡 | PDPA-02 ✅ self-service data-subject requests: file/list/export JSON (ขอดู), owner queue + audited handling; erase removes the user's copies (`pdpa.e2e.test.ts`). PDPA-01/03 documents remain owner actions |
-| Staging + deploy | 🟡 | Docker Compose only (no hosted CI, owner decision 2026-10-23); `pnpm verify` before every deploy; staging host pending |
+| Staging + deploy | 🟡 | Docker Compose only (no hosted CI, owner decision 2026-10-23); `pnpm verify` before every deploy; staging **stack** done + boot-verified locally (compose `ENV_FILE`, `.env.staging.example`, sandbox opt-in, runbook §Staging); staging **host** pending (owner) |
 
 ## Known follow-ups
 
