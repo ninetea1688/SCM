@@ -71,6 +71,11 @@ const Env = z.object({
 
   /** `fake` publishes to an in-memory sandbox; `live` calls the real platform APIs. */
   PUBLISHER_MODE: z.enum(['fake', 'live']).default('fake'),
+  /**
+   * Explicit staging escape hatch: lets a NODE_ENV=production stack run the sandbox
+   * adapters (no Meta App needed yet). Never set this on the prod host.
+   */
+  ALLOW_FAKE_PUBLISHER: z.stringbool().default(false),
   META_GRAPH_VERSION: z.string().default('v24.0'),
   /** ADR-0004 prepare(): how long before the slot the pre-stage wake-up fires. */
   PUBLISH_PREPARE_LEAD_SEC: z.coerce.number().int().positive().default(300),

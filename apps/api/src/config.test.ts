@@ -23,3 +23,13 @@ describe('AUTH_ENFORCE_MFA default (AUTH-04, SEC-02)', () => {
     ).toBe(false);
   });
 });
+
+describe('ALLOW_FAKE_PUBLISHER default (staging sandbox opt-in)', () => {
+  it('defaults to false; an explicit true wins', () => {
+    expect(loadConfig({ ...base, NODE_ENV: 'production' }).ALLOW_FAKE_PUBLISHER).toBe(false);
+    expect(
+      loadConfig({ ...base, NODE_ENV: 'production', ALLOW_FAKE_PUBLISHER: 'true' })
+        .ALLOW_FAKE_PUBLISHER,
+    ).toBe(true);
+  });
+});

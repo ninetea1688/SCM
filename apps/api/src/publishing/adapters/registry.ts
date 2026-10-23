@@ -16,8 +16,10 @@ export class AdapterRegistry {
 
   constructor(@Inject(CONFIG) cfg: AppConfig) {
     if (cfg.PUBLISHER_MODE === 'fake') {
-      if (cfg.NODE_ENV === 'production') {
-        throw new Error('PUBLISHER_MODE=fake is not allowed in production');
+      if (cfg.NODE_ENV === 'production' && !cfg.ALLOW_FAKE_PUBLISHER) {
+        throw new Error(
+          'PUBLISHER_MODE=fake is not allowed in production (staging opts in via ALLOW_FAKE_PUBLISHER=true)',
+        );
       }
       for (const p of PLATFORMS) this.adapters.set(p, new FakeAdapter(p));
       return;
