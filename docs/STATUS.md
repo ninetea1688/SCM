@@ -7,11 +7,10 @@ Evidence = the test that proves the AC. Update this file in the same change that
 
 ## Next up (P1, in order)
 
-1. CONN-05/07 token refresh + pre-slot health check job + disconnect alerts
-2. CAL-01 drag-and-drop reschedule, week/day/list views; CAL-03 Thai holidays; CAL-05 quota hints in UI
-3. NOTI-01 email channel; OPS-02/03/04 Sentry + Prometheus metrics + status page
-4. PDPA-02 data-subject requests; Meta deletion job processing (INT-04 currently records only)
-5. Staging stack on Docker Compose (same `docker-compose.prod.yml`, separate host/env)
+1. CAL-01 drag-and-drop reschedule, week/day/list views; CAL-03 Thai holidays; CAL-05 quota hints in UI; CONN-06 quota column + reconnect button
+2. NOTI-01 email channel; OPS-02/03/04 Sentry + Prometheus metrics + status page
+3. PDPA-02 data-subject requests; Meta deletion job processing (INT-04 currently records only)
+4. Staging stack on Docker Compose (same `docker-compose.prod.yml`, separate host/env)
 
 ## P1 requirements
 
@@ -26,9 +25,9 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | CONN-01 Meta OAuth (pages + IG) | 🟡 | `POST /accounts/meta` written, untested against Meta (needs App) |
 | CONN-02 LINE connect + webhook | 🟡 | verifies token live; untested without a channel |
 | CONN-04 Encrypted tokens | ✅ | `TokenCipher` AES-256-GCM, key rotation by id |
-| CONN-05 Auto refresh + pre-slot health check | ⬜ | |
+| CONN-05 Auto refresh + pre-slot health check | ✅ | `account-health.test.ts` + `account-maintenance.e2e.test.ts`: hourly sweep (system role), Meta token re-exchange hook, pre-slot probe in the prepare wake-up; expired tokens disconnect + alert |
 | CONN-06 Health dashboard | 🟡 | `/accounts` page; quota column pending |
-| CONN-07 Disconnect alert + reconnect | 🟡 | publish fails loudly with `account_disconnected`; proactive alert pending |
+| CONN-07 Disconnect alert + reconnect | 🟡 | publish fails loudly with `account_disconnected`; proactive alert done (`account_disconnected` in-app + team LINE); reconnect button in UI pending |
 | MEDIA-01 Presigned direct upload | ✅ | `media.e2e.test.ts` (real SeaweedFS PUT); `/media` uploader. Fixed SDK checksum bug that broke browser PUTs |
 | MEDIA-02 Folders/tags/search | 🟡 | API filters kind/folder/tag; `/media` filters by kind. Missing: aspect-ratio + duration filters (API and UI), search, folder/tag UI |
 | MEDIA-03 Thumbnails + preview | ✅ | `media.e2e.test.ts` (15 tests): image/video/EXIF renditions, no upscale, poster frame content, audit event, queue hand-off + re-queue, final-attempt failure, sweeper; safety per ADR-0008 (allowlist, format match, size match, pixel cap, disguised playlist, immutable key). Video preview = poster still; documents: no preview yet |

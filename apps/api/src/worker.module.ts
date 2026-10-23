@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
+import { AccountMaintenanceJob } from './accounts/account-maintenance.job';
 import { CoreModule } from './common/core.module';
 import { pinoParams } from './common/logging';
 import { loadConfig } from './config';
@@ -13,6 +14,12 @@ import { bullRoot } from './queue.config';
 /** Worker process: queue consumers and periodic system jobs. No HTTP routes. */
 @Module({
   imports: [LoggerModule.forRoot(pinoParams(loadConfig())), CoreModule, bullRoot, PublishingModule],
-  providers: [PublishProcessor, MediaJobProcessor, SweeperService, MediaSweeper],
+  providers: [
+    PublishProcessor,
+    MediaJobProcessor,
+    SweeperService,
+    MediaSweeper,
+    AccountMaintenanceJob,
+  ],
 })
 export class WorkerModule {}

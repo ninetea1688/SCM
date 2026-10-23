@@ -38,6 +38,7 @@ import {
   type VariantStatus,
 } from '@scm/domain';
 import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
+import { AccountHealthService } from '../accounts/account-health.service';
 import { AuditService } from '../common/audit.service';
 import { APP_DB } from '../common/core.module';
 import { TokenCipher } from '../common/crypto';
@@ -68,6 +69,9 @@ interface Claimed {
   blocked?: AttemptOutcome;
 }
 
+/** Data carried out of claim() for the prepare pre-stage wake-up. */
+type Defer = { job: Job; req: PublishRequest; account?: typeof socialAccounts.$inferSelect };
+
 @Injectable()
 export class PublishRunner {
   private readonly log = new Logger(PublishRunner.name);
@@ -80,6 +84,7 @@ export class PublishRunner {
     private readonly audit: AuditService,
     private readonly notifications: NotificationService,
     private readonly queue: PublishQueue,
+    private readonly health: AccountHealthService,
   ) {}
 
   async run(data: PublishJobData): Promise<RunResult> {
@@ -134,11 +139,15 @@ export class PublishRunner {
 
   // ── prepare (ADR-0004): pre-stage invisible media work before the slot ──────
 
-  /** Early wake-up: create the container(s), store the handle, do not publish. */
-  private async preStage(
-    data: PublishJobData,
-    d: { job: Job; req: PublishRequest },
-  ): Promise<RunResult> {
+  /** Early wake-up: check account health (CONN-05), create containers, do not publish. */
+  private async preStage(data: PublishJobData, d: Defer): Promise<RunResult> {
+    // CONN-05 pre-slot health check: report a dead account before the slot so the
+    // team can reconnect in time. checkAccount() alerts (CONN-07) on `expired`.
+    if (d.account) {
+      const verdict = await this.health.checkAccount(d.account);
+      if (verdict === 'expired')
+        return { status: 'skipped', reason: 'account_disconnected_precheck' };
+    }
     if (d.job.preparedHandle) return { status: 'skipped', reason: 'already_prepared' };
     const handle = await this.maybePrepare(data, d.job, d.req);
     return { status: 'skipped', reason: handle ? 'prestaged' : 'prepare_failed' };
@@ -220,7 +229,7 @@ export class PublishRunner {
   private async claim(
     tx: Tx,
     data: PublishJobData,
-  ): Promise<Claimed | { skip: string } | { defer: { job: Job; req: PublishRequest } }> {
+  ): Promise<Claimed | { skip: string } | { defer: Defer }> {
     const [job] = await tx
       .select()
       .from(publishJobs)
@@ -344,7 +353,11 @@ export class PublishRunner {
       this.adapters.get(platform).prepare
     ) {
       return {
-        defer: { job, req: this.buildReq(job, variant, account, media, lastPublish, blocked) },
+        defer: {
+          job,
+          req: this.buildReq(job, variant, account, media, lastPublish, blocked),
+          account: account ?? undefined,
+        },
       };
     }
 

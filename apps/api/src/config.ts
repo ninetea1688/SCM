@@ -81,6 +81,8 @@ const Env = z.object({
   META_APP_SECRET: z.string().default(''),
   /** CONN AC: warn when a token expires within this many days. */
   TOKEN_EXPIRY_WARN_DAYS: z.coerce.number().default(7),
+  /** CONN-05: account health-check + token-renewal sweep interval (PRD default 1 h). */
+  ACCOUNT_CHECK_INTERVAL_SEC: z.coerce.number().positive().default(3600),
   /** NOTI-01: internal LINE OA for staff alerts (separate from the customer OA). */
   LINE_NOTIFY_CHANNEL_TOKEN: z.string().default(''),
   LINE_NOTIFY_GROUP_ID: z.string().default(''),
