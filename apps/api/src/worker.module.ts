@@ -10,6 +10,8 @@ import { AccountMaintenanceJob } from './accounts/account-maintenance.job';
 import { CoreModule } from './common/core.module';
 import { pinoParams } from './common/logging';
 import { type AppConfig, CONFIG, loadConfig } from './config';
+import { StatusWatchJob } from './health/status-watch.job';
+import { StatusWatchService } from './health/status-watch.service';
 import { MediaJobProcessor } from './media/media.processor';
 import { MediaSweeper } from './media/media-sweeper.service';
 import { PublishProcessor } from './publishing/publish.processor';
@@ -47,6 +49,8 @@ export class DataDeletionTimer implements OnModuleInit, OnModuleDestroy {
     AccountMaintenanceJob,
     DataDeletionService,
     DataDeletionTimer,
+    StatusWatchService,
+    StatusWatchJob,
   ],
 })
 export class WorkerModule {}

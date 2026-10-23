@@ -1,7 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { notifications, type Tx, users } from '@scm/db';
+import { type Db, memberships, notifications, type Tx, users } from '@scm/db';
 import { inArray } from 'drizzle-orm';
 import nodemailer, { type Transporter } from 'nodemailer';
+import { SYSTEM_DB } from '../common/db-tokens';
 import { type AppConfig, CONFIG } from '../config';
 
 export type NotificationType =
@@ -9,7 +10,8 @@ export type NotificationType =
   | 'account_disconnected'
   | 'approval_requested'
   | 'approval_decided'
-  | 'token_expiring';
+  | 'token_expiring'
+  | 'system_alert';
 
 export interface NotifyInput {
   workspaceId: string;
@@ -34,7 +36,42 @@ export class NotificationService {
   private readonly log = new Logger(NotificationService.name);
   private mailer: Transporter | null = null;
 
-  constructor(@Inject(CONFIG) private readonly cfg: AppConfig) {}
+  constructor(
+    @Inject(CONFIG) private readonly cfg: AppConfig,
+    @Inject(SYSTEM_DB) private readonly system: Db,
+  ) {}
+
+  /**
+   * OPS-04: system-wide alert — in-app rows for every workspace's owners/admins
+   * (cross-tenant, system role) and exactly ONE team LINE push, not one per workspace.
+   */
+  async notifySystem(n: {
+    type: NotificationType;
+    title: string;
+    body?: string;
+    link?: string;
+  }): Promise<void> {
+    const admins = await this.system
+      .select({ workspaceId: memberships.workspaceId, userId: memberships.userId })
+      .from(memberships)
+      .where(inArray(memberships.role, ['owner', 'admin']));
+    if (admins.length) {
+      await this.system.insert(notifications).values(
+        admins.map((a) => ({
+          workspaceId: a.workspaceId,
+          userId: a.userId,
+          type: n.type,
+          channel: 'in_app' as const,
+          title: n.title,
+          body: n.body ?? '',
+          link: n.link ?? null,
+          status: 'sent' as const,
+          sentAt: new Date(),
+        })),
+      );
+    }
+    await this.sendTeamLine(`${n.title}\n${n.body ?? ''}`.trim());
+  }
 
   async notify(tx: Tx, n: NotifyInput): Promise<() => Promise<void>> {
     const unique = [...new Set(n.userIds)];

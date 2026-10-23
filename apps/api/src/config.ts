@@ -90,6 +90,9 @@ const Env = z.object({
   ACCOUNT_CHECK_INTERVAL_SEC: z.coerce.number().positive().default(3600),
   /** INT-04: how often the worker processes platform data-deletion requests. */
   DATA_DELETION_POLL_SEC: z.coerce.number().positive().default(300),
+  /** OPS-04: system-health watch interval and the queue backlog that counts as bad. */
+  STATUS_WATCH_INTERVAL_SEC: z.coerce.number().positive().default(300),
+  STATUS_QUEUE_BACKLOG_ALERT: z.coerce.number().int().nonnegative().default(50),
   /** NOTI-01: internal LINE OA for staff alerts (separate from the customer OA). */
   LINE_NOTIFY_CHANNEL_TOKEN: z.string().default(''),
   LINE_NOTIFY_GROUP_ID: z.string().default(''),
