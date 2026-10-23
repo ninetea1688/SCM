@@ -14,6 +14,8 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm api node
 
 `migrate` runs automatically before `api`/`worker` start (service_completed_successfully).
 
+There is no hosted CI: run `pnpm verify` (with `pnpm dev:infra` up) before tagging a release.
+
 **Upgrade:** `git pull && docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`.
 Migrations are forward-only; take a backup first (`docker compose ... exec backup /backup.sh` runs one now).
 

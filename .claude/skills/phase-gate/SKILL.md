@@ -10,7 +10,7 @@ argument-hint: <P1|P2|…>
    (`grep -nE "\| (M|S|C) \| $ARGUMENTS" prd/prd.md`), plus ADRs that moved items in/out.
 2. Cross-check `docs/STATUS.md`. For each Must: status, evidence test, and run
    `pnpm --filter @scm/api test -- -t "<evidence>"` (or `pnpm verify` for all) to prove it now.
-3. Check the non-functional bits for the phase: NFRs, SEC/PDPA/PLAT items, runbooks, CI green,
+3. Check the non-functional bits for the phase: NFRs, SEC/PDPA/PLAT items, runbooks, `pnpm verify` green,
    staging deploy, backups.
 4. Ask `prd-guardian` for an independent pass over gaps.
 5. Report: ✅ met / ❌ not met (with reason) per criterion, blockers needing the owner

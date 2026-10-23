@@ -13,7 +13,7 @@ Evidence = the test that proves the AC. Update this file in the same change that
 4. CAL-01 drag-and-drop reschedule, week/day/list views; CAL-03 Thai holidays; CAL-05 quota hints in UI
 5. NOTI-01 email channel; OPS-02/03/04 Sentry + Prometheus metrics + status page
 6. PDPA-02 data-subject requests; Meta deletion job processing (INT-04 currently records only)
-7. CI pipeline green on GitHub (workflow exists), staging stack
+7. Staging stack on Docker Compose (same `docker-compose.prod.yml`, separate host/env)
 
 ## P1 requirements
 
@@ -62,7 +62,7 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | INT-04 Meta data-deletion callback | 🟡 | signed_request verified + recorded; deletion job pending |
 | SEC-01/03 | ✅ | crypto, webhook signature tests |
 | PDPA-01/02/03 | ⬜ | P0 documents + P1 data-subject flow |
-| Staging + CI/CD | 🟡 | `.github/workflows/ci.yml`; staging host pending |
+| Staging + deploy | 🟡 | Docker Compose only (no hosted CI, owner decision 2026-10-23); `pnpm verify` before every deploy; staging host pending |
 
 ## Phase 0 blockers (owner actions, outside code)
 
