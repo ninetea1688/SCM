@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { aspectLabel, formatMatches, mediaType, posterTimeSec, renditionKey } from './media.js';
+import {
+  aspectLabel,
+  formatMatches,
+  isHeif,
+  mediaType,
+  planVideo,
+  posterTimeSec,
+  publishKey,
+  renditionKey,
+} from './media.js';
 
 describe('MEDIA-03 renditions', () => {
   it('ADR-0008: accepts only allowlisted types; SVG and HTML are refused', () => {
@@ -32,5 +41,40 @@ describe('MEDIA-03 renditions', () => {
 
   it('derives rendition keys from the original key', () => {
     expect(renditionKey('ws/a/b.jpg', 'thumb')).toBe('ws/a/b.jpg.thumb.webp');
+  });
+});
+
+describe('MEDIA-04 publishable renditions', () => {
+  const h264 = {
+    formatName: 'mov,mp4,m4a,3gp,3g2,mj2',
+    videoCodec: 'h264',
+    pixelFormat: 'yuv420p',
+    audioCodec: 'aac',
+    width: 1080,
+    height: 1920,
+  };
+
+  it('MEDIA-04: H.264/AAC MP4 within the size cap is only remuxed', () => {
+    expect(planVideo(h264, 1920)).toBe('remux');
+    expect(planVideo({ ...h264, audioCodec: undefined }, 1920)).toBe('remux');
+  });
+
+  it('MEDIA-04: HEVC, non-AAC audio, 10-bit, WebM or oversize video is transcoded', () => {
+    expect(planVideo({ ...h264, videoCodec: 'hevc' }, 1920)).toBe('transcode');
+    expect(planVideo({ ...h264, audioCodec: 'opus' }, 1920)).toBe('transcode');
+    expect(planVideo({ ...h264, pixelFormat: 'yuv420p10le' }, 1920)).toBe('transcode');
+    expect(planVideo({ ...h264, formatName: 'matroska,webm' }, 1920)).toBe('transcode');
+    expect(planVideo({ ...h264, width: 2160, height: 3840 }, 1920)).toBe('transcode');
+  });
+
+  it('MEDIA-04: HEIC/HEIF are recognised for libheif decoding', () => {
+    expect(isHeif('image/heic')).toBe(true);
+    expect(isHeif('image/HEIF')).toBe(true);
+    expect(isHeif('image/jpeg')).toBe(false);
+  });
+
+  it('MEDIA-04: publish keys sit next to the original', () => {
+    expect(publishKey('ws/a/media/x.heic', 'image')).toBe('ws/a/media/x.heic.publish.jpg');
+    expect(publishKey('ws/a/media/x.mov', 'video')).toBe('ws/a/media/x.mov.publish.mp4');
   });
 });

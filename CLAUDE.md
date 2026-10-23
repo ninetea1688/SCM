@@ -16,6 +16,9 @@ docker/          Dockerfiles, Caddyfile, Postgres role init, backup
 
 ## Commands
 
+Dev prerequisites: Node 24, pnpm 10, Docker, `ffmpeg` (with libx264/libx265) and `heif-dec`
+(`brew install ffmpeg libheif`) — media tests call them for real.
+
 ```bash
 pnpm dev:infra                # Postgres :5433, Redis :6380, SeaweedFS S3 :8333, Mailpit :8025
 pnpm build:packages && pnpm db:migrate   # DATABASE_OWNER_URL defaults to local owner

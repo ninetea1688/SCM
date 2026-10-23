@@ -16,7 +16,7 @@ RUN pnpm deploy --legacy --filter @scm/api --prod /out
 
 FROM node:24-alpine AS runtime
 ENV NODE_ENV=production
-RUN apk add --no-cache tini ffmpeg && addgroup -S scm && adduser -S scm -G scm
+RUN apk add --no-cache tini ffmpeg libheif-tools && addgroup -S scm && adduser -S scm -G scm
 WORKDIR /app
 COPY --from=build --chown=scm:scm /out .
 USER scm

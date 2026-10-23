@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SYSTEM_DB } from '../common/core.module';
 import { CONFIG } from '../config';
 import { bootApp, createWorld, OWNER_URL, type World } from '../test/harness';
+import { mediaHelpers, solidImage } from '../test/media-helpers';
 import { MediaProcessor } from './media-processor.service';
 import { MEDIA_QUEUE, MediaQueue } from './media-queue';
 import { MAX_REQUEUES, MediaSweeper } from './media-sweeper.service';
@@ -44,66 +45,16 @@ afterAll(async () => {
   await app.close();
 });
 
-interface Asset {
-  id: string;
-  status: string;
-  storageKey: string;
-  width: number | null;
-  height: number | null;
-  durationSec: number | null;
-  thumbnailKey: string | null;
-  previewKey: string | null;
-  processingError: string | null;
-  thumbnailUrl: string | null;
-  previewUrl: string | null;
-  originalUrl: string | null;
-}
-
 const processor = () => app.get(MediaProcessor);
 const storage = () => app.get(StorageService);
 /** The sweeper runs in the worker process; build one here without its timer. */
 const sweeper = () => new MediaSweeper(app.get(SYSTEM_DB), app.get(CONFIG), app.get(MediaQueue));
 const queue = () => app.get<Queue>(getQueueToken(MEDIA_QUEUE));
-const get = async (id: string) =>
-  (await w.as('editor').http('get', `/media/${id}`).expect(200)).body as Asset;
-
-/** Browser steps: presign → PUT bytes → complete. Returns the asset and its upload URL. */
-async function uploadOnly(
-  body: Buffer,
-  mimeType: string,
-  fileName: string,
-  declared = body.length,
-) {
-  const start = await w
-    .as('editor')
-    .http('post', '/media/uploads')
-    .send({ fileName, mimeType, sizeBytes: declared })
-    .expect(201);
-  const put = await fetch(start.body.uploadUrl, {
-    method: 'PUT',
-    headers: { 'content-type': mimeType },
-    body,
-  });
-  expect(put.ok).toBe(true);
-  const done = await w
-    .as('editor')
-    .http('post', `/media/${start.body.asset.id}/complete`)
-    .expect(201);
-  return { asset: done.body as Asset, uploadUrl: start.body.uploadUrl as string };
-}
-
-/** Upload, then run what the worker would run. */
-async function upload(body: Buffer, mimeType: string, fileName: string): Promise<Asset> {
-  const { asset } = await uploadOnly(body, mimeType, fileName);
-  expect(asset.status).toBe('processing');
-  await processor().process({ mediaAssetId: asset.id, workspaceId: w.workspaceId });
-  return get(asset.id);
-}
-
-const image = (width: number, height: number, format: 'png' | 'jpeg' = 'png') =>
-  sharp({ create: { width, height, channels: 3, background: '#0b6e4f' } })
-    .toFormat(format)
-    .toBuffer();
+const { get, uploadOnly, upload } = mediaHelpers(
+  () => app,
+  () => w,
+);
+const image = solidImage;
 
 const fetchMeta = async (url: string | null) =>
   sharp(Buffer.from(await (await fetch(url!)).arrayBuffer())).metadata();

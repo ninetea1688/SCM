@@ -1,5 +1,5 @@
 /**
- * MEDIA-03: after upload, verify the file, read its real dimensions/duration and produce WebP
+ * MEDIA-03/04: after upload, verify the file, read its real dimensions/duration and produce WebP
  * renditions (thumb for grids, preview for the editor). Runs in the worker via the `media` queue.
  * Security and lifecycle rules: ADR-0008.
  *
@@ -7,6 +7,9 @@
  *   client declared; ffmpeg may only read the local file (no network/other protocols).
  * - Verified bytes are copied to a final key that no presigned PUT can reach, with a
  *   copy-if-ETag-matches, so what was checked is exactly what gets published (no TOCTOU).
+ * - MEDIA-04 (ADR-0009): a platform-ready copy is written next to the original — JPEG for images
+ *   (HEIC via libheif), H.264/AAC MP4 for video (remux when already compliant) — with metadata
+ *   such as GPS stripped. Publishing and validate() use that copy.
  * - Content problems → `failed` with a Thai reason, no retry. Infrastructure problems throw so
  *   BullMQ retries; the final attempt marks `failed` so nothing sits in `processing` forever.
  */
@@ -17,7 +20,18 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { type Db, mediaAssets, withTenant } from '@scm/db';
-import { formatMatches, mediaType, posterTimeSec, renditionKey } from '@scm/domain';
+import {
+  formatMatches,
+  isHeif,
+  mediaType,
+  PUBLISH_MIME,
+  planVideo,
+  posterTimeSec,
+  publishKey,
+  renditionKey,
+  type VideoFacts,
+  type VideoPlan,
+} from '@scm/domain';
 import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { AuditService } from '../common/audit.service';
@@ -47,6 +61,16 @@ interface Probe {
   durationSec?: number;
   /** Image file or extracted poster frame to render renditions from. */
   frame: string;
+  video?: VideoFacts;
+}
+
+interface Published {
+  publishKey: string;
+  publishMimeType: string;
+  publishSizeBytes: number;
+  publishWidth: number;
+  publishHeight: number;
+  plan: VideoPlan | 'jpeg';
 }
 
 type Asset = typeof mediaAssets.$inferSelect;
@@ -74,6 +98,17 @@ export class MediaProcessor {
     if (asset?.status !== 'processing') return 'skipped';
 
     const dir = await mkdtemp(path.join(tmpdir(), 'scm-media-'));
+    // Long transcodes must not look stuck to MediaSweeper (ADR-0008/0009).
+    const heartbeat = setInterval(
+      () =>
+        void withTenant(this.db, { workspaceId: data.workspaceId }, (tx) =>
+          tx
+            .update(mediaAssets)
+            .set({ processingStartedAt: new Date() })
+            .where(eq(mediaAssets.id, data.mediaAssetId)),
+        ).catch(() => undefined),
+      this.cfg.MEDIA_HEARTBEAT_SEC * 1000,
+    );
     try {
       const file = path.join(dir, 'original');
       const etag = await this.storage.download(asset.storageKey, file, this.cfg.MEDIA_MAX_BYTES);
@@ -81,6 +116,7 @@ export class MediaProcessor {
       if (!type) throw new ContentError('ชนิดไฟล์นี้ไม่รองรับ');
 
       let patch: Partial<typeof mediaAssets.$inferInsert> = {};
+      let detail: Record<string, unknown> = {};
       const key = finalKey(asset.storageKey);
       if (type.kind === 'document') {
         // Documents: verify it really is a PDF. Previews of documents are not in MEDIA-03 scope.
@@ -88,13 +124,19 @@ export class MediaProcessor {
       } else {
         const probe =
           type.kind === 'image'
-            ? await this.probeImage(asset, file)
+            ? await this.probeImage(asset, file, dir)
             : await this.probeVideo(asset, dir, file);
+        const { plan, ...published } =
+          type.kind === 'image'
+            ? await this.publishImage(key, dir, probe.frame)
+            : await this.publishVideo(key, dir, file, probe.video!);
+        detail = { publish: plan };
         patch = {
           width: probe.width,
           height: probe.height,
           durationSec: probe.durationSec ?? null,
           ...(await this.renditions(key, probe.frame)),
+          ...published,
         };
       }
 
@@ -108,7 +150,7 @@ export class MediaProcessor {
         throw e;
       }
       await this.storage.delete(asset.storageKey).catch(() => undefined);
-      return await this.finish(data, { ...patch, status: 'ready', storageKey: key });
+      return await this.finish(data, { ...patch, status: 'ready', storageKey: key }, detail);
     } catch (e) {
       if (e instanceof ContentError) {
         await this.storage.delete(asset.storageKey).catch(() => undefined);
@@ -133,8 +175,139 @@ export class MediaProcessor {
       }
       throw e;
     } finally {
+      clearInterval(heartbeat);
       await rm(dir, { recursive: true, force: true });
     }
+  }
+
+  /**
+   * MEDIA-04: JPEG every platform accepts — EXIF rotation baked in, transparency flattened onto
+   * white, all metadata (GPS, camera, author) dropped, downscaled only beyond the cap.
+   */
+  private async publishImage(key: string, dir: string, frame: string): Promise<Published> {
+    const out = path.join(dir, 'publish.jpg');
+    const max = this.cfg.MEDIA_PUBLISH_IMAGE_MAX_PX;
+    const info = await sharp(frame, {
+      limitInputPixels: this.cfg.MEDIA_MAX_INPUT_PIXELS,
+      failOn: 'error',
+    })
+      .rotate()
+      .resize({ width: max, height: max, fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: this.cfg.MEDIA_PUBLISH_JPEG_QUALITY, mozjpeg: true })
+      .toFile(out)
+      .catch(() => {
+        throw new ContentError('แปลงรูปภาพเป็น JPEG ไม่สำเร็จ ไฟล์อาจเสียหาย');
+      });
+    const target = publishKey(key, 'image');
+    const size = await this.storage.putFile(target, out, PUBLISH_MIME.image);
+    return {
+      publishKey: target,
+      publishMimeType: PUBLISH_MIME.image,
+      publishSizeBytes: size,
+      publishWidth: info.width,
+      publishHeight: info.height,
+      plan: 'jpeg',
+    };
+  }
+
+  /**
+   * MEDIA-04: H.264/AAC MP4 with faststart and no metadata. Compliant files are remuxed (seconds);
+   * others are transcoded (minutes) and scaled so the long side fits the cap.
+   */
+  private async publishVideo(
+    key: string,
+    dir: string,
+    file: string,
+    facts: VideoFacts,
+  ): Promise<Published> {
+    const max = this.cfg.MEDIA_PUBLISH_VIDEO_MAX_PX;
+    const plan = planVideo(facts, max);
+    const out = path.join(dir, 'publish.mp4');
+    const common = ['-nostdin', '-v', 'error', '-protocol_whitelist', 'file', '-i', file];
+    const maps = ['-map', '0:v:0', '-map', '0:a:0?', '-sn', '-dn', '-map_metadata', '-1'];
+    const codec =
+      plan === 'remux'
+        ? ['-c', 'copy']
+        : [
+            '-vf',
+            // Fit the long side within `max` (never upscale), keep even dimensions for yuv420p.
+            `scale=w='if(gte(iw,ih),min(${max},iw),-2)':h='if(gte(iw,ih),-2,min(${max},ih))'`,
+            '-c:v',
+            'libx264',
+            '-preset',
+            'veryfast',
+            '-crf',
+            '23',
+            '-profile:v',
+            'high',
+            '-pix_fmt',
+            'yuv420p',
+            '-c:a',
+            'aac',
+            '-b:a',
+            '128k',
+            '-ac',
+            '2',
+          ];
+    try {
+      await run(
+        this.cfg.FFMPEG_PATH,
+        [...common, ...maps, ...codec, '-movflags', '+faststart', '-f', 'mp4', '-y', out],
+        { timeout: this.cfg.MEDIA_TRANSCODE_TIMEOUT_SEC * 1000, maxBuffer: 10 * 1024 * 1024 },
+      );
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw e;
+      throw new ContentError('แปลงวิดีโอเป็น MP4 ไม่สำเร็จ ไฟล์อาจเสียหายหรือยาวเกินกำหนด');
+    }
+    const dims = await this.videoSize(out);
+    const target = publishKey(key, 'video');
+    const size = await this.storage.putFile(target, out, PUBLISH_MIME.video);
+    return {
+      publishKey: target,
+      publishMimeType: PUBLISH_MIME.video,
+      publishSizeBytes: size,
+      publishWidth: dims.width,
+      publishHeight: dims.height,
+      plan,
+    };
+  }
+
+  private async videoSize(file: string): Promise<{ width: number; height: number }> {
+    const { stdout } = await run(
+      this.cfg.FFPROBE_PATH,
+      [
+        '-v',
+        'error',
+        '-protocol_whitelist',
+        'file',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=width,height',
+        '-of',
+        'json',
+        file,
+      ],
+      { timeout: this.cfg.MEDIA_PROCESS_TIMEOUT_SEC * 1000 },
+    );
+    const st = (JSON.parse(stdout) as { streams?: { width?: number; height?: number }[] })
+      .streams?.[0];
+    return { width: st?.width ?? 0, height: st?.height ?? 0 };
+  }
+
+  /** HEIC/HEIF → PNG with libheif (handles iPhone tile grids). The decode itself is the check. */
+  private async decodeHeif(file: string, dir: string): Promise<string> {
+    const out = path.join(dir, 'decoded.png');
+    try {
+      await run(this.cfg.HEIF_DEC_PATH, [file, out], {
+        timeout: this.cfg.MEDIA_PROCESS_TIMEOUT_SEC * 1000,
+      });
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw e; // heif-dec missing: infra
+      throw new ContentError('ไฟล์ HEIC เสียหายหรืออ่านไม่ได้');
+    }
+    return out;
   }
 
   /** Decode once, write both renditions. */
@@ -165,15 +338,17 @@ export class MediaProcessor {
     return out;
   }
 
-  private async probeImage(asset: Asset, file: string): Promise<Probe> {
+  private async probeImage(asset: Asset, file: string, dir: string): Promise<Probe> {
+    const heif = isHeif(asset.mimeType);
+    const source = heif ? await this.decodeHeif(file, dir) : file;
     let meta: sharp.Metadata;
     try {
       // Header only (no pixel decode), so the size check below can give the specific reason.
-      meta = await sharp(file, { limitInputPixels: false }).metadata();
+      meta = await sharp(source, { limitInputPixels: false }).metadata();
     } catch {
       throw new ContentError('ไฟล์เสียหายหรือไม่ใช่รูปภาพที่ระบบรองรับ');
     }
-    if (!formatMatches(asset.mimeType, meta.format)) {
+    if (!heif && !formatMatches(asset.mimeType, meta.format)) {
       throw new ContentError('เนื้อไฟล์ไม่ตรงกับชนิดไฟล์ที่ระบุ');
     }
     if (!meta.width || !meta.height) throw new ContentError('อ่านขนาดรูปภาพไม่ได้');
@@ -185,7 +360,7 @@ export class MediaProcessor {
     return {
       width: swap ? meta.height : meta.width,
       height: swap ? meta.width : meta.height,
-      frame: file,
+      frame: source,
     };
   }
 
@@ -216,6 +391,7 @@ export class MediaProcessor {
       throw new ContentError('วิดีโอมีความละเอียดสูงเกินกว่าที่ระบบรองรับ');
     }
     const durationSec = Number(info.format?.duration ?? v.duration) || undefined;
+    const audio = info.streams?.find((s) => s.codec_type === 'audio');
     const rotated = Math.abs(rotationOf(v)) % 180 === 90;
 
     const frame = path.join(dir, 'poster.png');
@@ -252,6 +428,14 @@ export class MediaProcessor {
       width: rotated ? v.height : v.width,
       height: rotated ? v.width : v.height,
       durationSec,
+      video: {
+        formatName: info.format?.format_name,
+        videoCodec: v.codec_name,
+        pixelFormat: v.pix_fmt,
+        audioCodec: audio?.codec_name,
+        width: v.width,
+        height: v.height,
+      },
       frame,
     };
   }
@@ -270,6 +454,7 @@ export class MediaProcessor {
   private async finish(
     data: MediaJobData,
     patch: Partial<typeof mediaAssets.$inferInsert> & { status: 'ready' | 'failed' },
+    detail: Record<string, unknown> = {},
   ): Promise<ProcessResult> {
     await withTenant(this.db, { workspaceId: data.workspaceId }, async (tx) => {
       await tx
@@ -284,7 +469,7 @@ export class MediaProcessor {
           action: patch.status === 'ready' ? 'media.processed' : 'media.processing_failed',
           targetType: 'media_asset',
           targetId: data.mediaAssetId,
-          after: { status: patch.status, error: patch.processingError },
+          after: { status: patch.status, error: patch.processingError, ...detail },
         },
         { audit: false },
       );
@@ -295,6 +480,8 @@ export class MediaProcessor {
 
 interface VideoStream {
   codec_type?: string;
+  codec_name?: string;
+  pix_fmt?: string;
   width?: number;
   height?: number;
   duration?: string;

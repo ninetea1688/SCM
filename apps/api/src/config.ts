@@ -53,6 +53,14 @@ const Env = z.object({
   MEDIA_MAX_INFLIGHT_PER_WORKSPACE: z.coerce.number().int().positive().default(50),
   /** Sweeper: re-enqueue after this long in `processing`; give up after 4× this. */
   MEDIA_STUCK_AFTER_MIN: z.coerce.number().positive().default(15),
+  /** MEDIA-04 / ADR-0009 publishable renditions. */
+  MEDIA_PUBLISH_IMAGE_MAX_PX: z.coerce.number().int().positive().default(4096),
+  MEDIA_PUBLISH_JPEG_QUALITY: z.coerce.number().int().min(1).max(100).default(90),
+  MEDIA_PUBLISH_VIDEO_MAX_PX: z.coerce.number().int().positive().default(1920),
+  MEDIA_TRANSCODE_TIMEOUT_SEC: z.coerce.number().positive().default(1800),
+  /** Worker refreshes `processing_started_at` this often so long transcodes aren't "stuck". */
+  MEDIA_HEARTBEAT_SEC: z.coerce.number().positive().default(60),
+  HEIF_DEC_PATH: z.string().default('heif-dec'),
   FFMPEG_PATH: z.string().default('ffmpeg'),
   FFPROBE_PATH: z.string().default('ffprobe'),
 

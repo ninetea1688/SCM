@@ -1,4 +1,5 @@
-import { createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { type Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import {
@@ -117,6 +118,21 @@ export class StorageService {
         ContentType: contentType,
       }),
     );
+  }
+
+  /** Upload a local file without buffering it (publishable videos can be large). */
+  async putFile(key: string, file: string, contentType: string): Promise<number> {
+    const { size } = await stat(file);
+    await this.s3.send(
+      new PutObjectCommand({
+        Bucket: this.cfg.S3_BUCKET,
+        Key: key,
+        Body: createReadStream(file),
+        ContentLength: size,
+        ContentType: contentType,
+      }),
+    );
+    return size;
   }
 
   /**

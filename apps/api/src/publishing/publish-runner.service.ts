@@ -222,12 +222,13 @@ export class PublishRunner {
       media.push({
         mediaAssetId: asset.id,
         kind: asset.kind,
-        mimeType: asset.mimeType,
-        sizeBytes: asset.sizeBytes,
-        width: asset.width ?? undefined,
-        height: asset.height ?? undefined,
+        // MEDIA-04 / ADR-0009: platforms get the converted copy, never the raw original.
+        mimeType: asset.publishMimeType ?? asset.mimeType,
+        sizeBytes: asset.publishSizeBytes ?? asset.sizeBytes,
+        width: asset.publishWidth ?? asset.width ?? undefined,
+        height: asset.publishHeight ?? asset.height ?? undefined,
         durationSec: asset.durationSec ?? undefined,
-        url: await this.storage.presignGet(asset.storageKey),
+        url: await this.storage.presignGet(asset.publishKey ?? asset.storageKey),
         expiresAt: new Date(Date.now() + 3600_000),
       });
     }

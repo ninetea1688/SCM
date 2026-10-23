@@ -223,6 +223,8 @@ export class MediaController {
       ...a,
       thumbnailUrl: await sign(a.thumbnailKey),
       previewUrl: await sign(a.previewKey),
+      /** The converted file platforms will receive (MEDIA-04); shown so staff can check it. */
+      publishUrl: await sign(a.publishKey),
       originalUrl:
         opts.original && a.status === 'ready'
           ? await this.storage.presignGet(a.storageKey, {

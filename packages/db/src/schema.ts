@@ -5,6 +5,7 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   bigserial,
   boolean,
   index,
@@ -131,7 +132,8 @@ export const mediaAssets = pgTable('media_assets', {
   mimeType: text('mime_type').notNull(),
   storageKey: text('storage_key').notNull().unique(),
   originalName: text('original_name').notNull(),
-  sizeBytes: integer('size_bytes').notNull(),
+  /** bigint: uploads may exceed 2 GiB (MEDIA_MAX_BYTES defaults to 4 GiB). */
+  sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
   width: integer('width'),
   height: integer('height'),
   durationSec: real('duration_sec'),
@@ -143,6 +145,15 @@ export const mediaAssets = pgTable('media_assets', {
   /** MEDIA-03 renditions (WebP), derived keys; null until processed or for documents. */
   thumbnailKey: text('thumbnail_key'),
   previewKey: text('preview_key'),
+  /**
+   * MEDIA-04 / ADR-0009: platform-ready copy (JPEG or H.264/AAC MP4, metadata stripped). Publishing
+   * and validate() use it; the original stays untouched. Null for documents.
+   */
+  publishKey: text('publish_key'),
+  publishMimeType: text('publish_mime_type'),
+  publishSizeBytes: bigint('publish_size_bytes', { mode: 'number' }),
+  publishWidth: integer('publish_width'),
+  publishHeight: integer('publish_height'),
   /** Thai reason shown to the user when status = failed. */
   processingError: text('processing_error'),
   /** Set when processing is (re)queued; the sweeper uses it to find stuck jobs (ADR-0008). */

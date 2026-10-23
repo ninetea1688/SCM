@@ -505,10 +505,11 @@ export class PostsService {
       .select({
         id: mediaAssets.id,
         kind: mediaAssets.kind,
-        mimeType: mediaAssets.mimeType,
-        sizeBytes: mediaAssets.sizeBytes,
-        width: mediaAssets.width,
-        height: mediaAssets.height,
+        // validate() checks what will actually be published (MEDIA-04 / ADR-0009).
+        mimeType: sql<string>`coalesce(${mediaAssets.publishMimeType}, ${mediaAssets.mimeType})`,
+        sizeBytes: sql<number>`coalesce(${mediaAssets.publishSizeBytes}, ${mediaAssets.sizeBytes})`,
+        width: sql<number | null>`coalesce(${mediaAssets.publishWidth}, ${mediaAssets.width})`,
+        height: sql<number | null>`coalesce(${mediaAssets.publishHeight}, ${mediaAssets.height})`,
         durationSec: mediaAssets.durationSec,
       })
       .from(variantMedia)

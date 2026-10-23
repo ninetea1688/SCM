@@ -18,7 +18,10 @@ import {
 
 export class FakeAdapter implements PublisherAdapter {
   /** Published posts by idempotency key — lets tests assert "no duplicates". */
-  readonly posts = new Map<string, { id: string; caption: string; count: number }>();
+  readonly posts = new Map<
+    string,
+    { id: string; caption: string; count: number; media: { mimeType: string; url: string }[] }
+  >();
   private readonly failedOnce = new Set<string>();
 
   constructor(readonly platform: Platform) {}
@@ -54,7 +57,12 @@ export class FakeAdapter implements PublisherAdapter {
     // Like a real platform, a second call creates a second post — we count them.
     const existing = this.posts.get(key);
     const id = existing?.id ?? `fake_${this.platform}_${this.posts.size + 1}`;
-    this.posts.set(key, { id, caption, count: (existing?.count ?? 0) + 1 });
+    this.posts.set(key, {
+      id,
+      caption,
+      count: (existing?.count ?? 0) + 1,
+      media: req.media.map((m) => ({ mimeType: m.mimeType, url: m.url })),
+    });
 
     if (caption.includes('[[fail:unknown]]') && !this.failedOnce.has(key)) {
       this.failedOnce.add(key);
