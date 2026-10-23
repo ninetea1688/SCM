@@ -42,6 +42,7 @@ import { AccountHealthService } from '../accounts/account-health.service';
 import { AuditService } from '../common/audit.service';
 import { APP_DB } from '../common/core.module';
 import { TokenCipher } from '../common/crypto';
+import { MetricsService } from '../health/metrics.service';
 import { StorageService } from '../media/storage.service';
 import { NotificationService } from '../notifications/notification.service';
 import { TransportError } from './adapters/http';
@@ -85,6 +86,7 @@ export class PublishRunner {
     private readonly notifications: NotificationService,
     private readonly queue: PublishQueue,
     private readonly health: AccountHealthService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async run(data: PublishJobData): Promise<RunResult> {
@@ -414,6 +416,11 @@ export class PublishRunner {
     opts: { publishAttempted: boolean },
   ): Promise<RunResult> {
     const after: (() => Promise<void>)[] = [];
+    // OPS-03: publish success rate per platform, whatever the DB outcome.
+    this.metrics.publishOutcomes.inc({
+      platform: claimed.req.variant.platform,
+      outcome: outcome.kind,
+    });
     const result = await withTenant(this.db, { workspaceId: data.workspaceId }, async (tx) => {
       const [job] = await tx
         .select()
@@ -553,6 +560,7 @@ export class PublishRunner {
       body: `${e.errorMessage ?? ''} (${e.errorCode ?? ''})`,
       link: `/posts/${variant.postId}`,
       teamLine: true,
+      email: true, // NOTI-01
     });
   }
 

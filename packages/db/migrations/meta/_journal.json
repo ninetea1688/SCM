@@ -57,6 +57,14 @@
       "when": 1792764890867,
       "tag": "0007_media_size_bigint",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792773695824,
+      "tag": "0008_pdpa_requests",
+      "breakpoints": true,
+      "hash": "0008_pdpa_requests"
     }
   ]
 }

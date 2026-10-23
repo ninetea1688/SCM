@@ -183,6 +183,7 @@ export class AccountHealthService {
           body: reason,
           link: '/accounts',
           teamLine: true,
+          email: true, // NOTI-01
         }),
       );
     });

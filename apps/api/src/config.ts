@@ -83,9 +83,16 @@ const Env = z.object({
   TOKEN_EXPIRY_WARN_DAYS: z.coerce.number().default(7),
   /** CONN-05: account health-check + token-renewal sweep interval (PRD default 1 h). */
   ACCOUNT_CHECK_INTERVAL_SEC: z.coerce.number().positive().default(3600),
+  /** INT-04: how often the worker processes platform data-deletion requests. */
+  DATA_DELETION_POLL_SEC: z.coerce.number().positive().default(300),
   /** NOTI-01: internal LINE OA for staff alerts (separate from the customer OA). */
   LINE_NOTIFY_CHANNEL_TOKEN: z.string().default(''),
   LINE_NOTIFY_GROUP_ID: z.string().default(''),
+  /** NOTI-01 email channel. Empty = disabled; dev points at Mailpit smtp://localhost:1025. */
+  SMTP_URL: z.string().default(''),
+  SMTP_FROM: z.string().default('SCM ศูนย์บริหารคอนเทนต์ <no-reply@scm.local>'),
+  /** OPS-02: Sentry DSN; empty disables error tracking. */
+  SENTRY_DSN: z.string().default(''),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });

@@ -9,7 +9,10 @@ import { CoreModule } from './common/core.module';
 import { pinoParams } from './common/logging';
 import { loadConfig } from './config';
 import { HealthController } from './health/health.controller';
+import { OpsController } from './health/ops.controller';
 import { MediaController } from './media/media.controller';
+import { PdpaController } from './pdpa/pdpa.controller';
+import { PdpaService } from './pdpa/pdpa.service';
 import { PostsController } from './posts/posts.controller';
 import { PostsService } from './posts/posts.service';
 import { PublishingModule } from './publishing/publishing.module';
@@ -30,10 +33,12 @@ import { WorkspacesService } from './workspaces/workspaces.service';
   ],
   controllers: [
     HealthController,
+    OpsController,
     WorkspacesController,
     AccountsController,
     PostsController,
     MediaController,
+    PdpaController,
     WebhooksController,
   ],
   providers: [
@@ -41,6 +46,7 @@ import { WorkspacesService } from './workspaces/workspaces.service';
     TenantGuard,
     WorkspacesService,
     AccountsService,
+    PdpaService,
     PostsService,
   ],
 })

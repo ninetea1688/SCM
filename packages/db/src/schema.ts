@@ -450,6 +450,32 @@ export const dataDeletionRequests = pgTable('data_deletion_requests', {
   completedAt: timestamp('completed_at', { withTimezone: true }),
 });
 
+/**
+ * PDPA-02: data-subject requests from our own users (ขอดู/ขอแก้/ขอลบ).
+ * Tenant-scoped: members see their own; owners/admins handle the queue.
+ */
+export const pdpaRequests = pgTable(
+  'pdpa_requests',
+  {
+    id: id(),
+    workspaceId: workspaceRef(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['access', 'correct', 'erase'] }).notNull(),
+    detail: text('detail'),
+    status: text('status', { enum: ['received', 'processing', 'done', 'rejected'] })
+      .notNull()
+      .default('received'),
+    /** Set by the handler (owner/admin) when closing the request. */
+    handledBy: uuid('handled_by').references(() => users.id, { onDelete: 'set null' }),
+    handledNote: text('handled_note'),
+    handledAt: timestamp('handled_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('pdpa_requests_ws_idx').on(t.workspaceId, t.createdAt)],
+);
+
 /** Tables protected by the tenant RLS policy. Keep in sync with the RLS migration. */
 export const TENANT_TABLES = [
   'workspaces',
@@ -469,4 +495,5 @@ export const TENANT_TABLES = [
   'events',
   'notifications',
   'inbound_events',
+  'pdpa_requests',
 ] as const;

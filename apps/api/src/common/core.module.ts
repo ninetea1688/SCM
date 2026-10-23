@@ -2,6 +2,7 @@ import { Global, Inject, Module, type OnApplicationShutdown } from '@nestjs/comm
 import { createDb, createPool, type Db } from '@scm/db';
 import type pg from 'pg';
 import { type AppConfig, CONFIG, loadConfig } from '../config';
+import { MetricsService } from '../health/metrics.service';
 import { AuditService } from './audit.service';
 import { TokenCipher } from './crypto';
 
@@ -35,8 +36,9 @@ const POOLS = Symbol('POOLS');
       useFactory: (cfg: AppConfig) => new TokenCipher(cfg.TOKEN_ENC_KEYS),
     },
     AuditService,
+    MetricsService,
   ],
-  exports: [CONFIG, APP_DB, SYSTEM_DB, TokenCipher, AuditService],
+  exports: [CONFIG, APP_DB, SYSTEM_DB, TokenCipher, AuditService, MetricsService],
 })
 export class CoreModule implements OnApplicationShutdown {
   constructor(@Inject(POOLS) private readonly pools: { app: pg.Pool; system: pg.Pool }) {}

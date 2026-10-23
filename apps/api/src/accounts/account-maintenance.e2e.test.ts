@@ -137,3 +137,19 @@ describe('CONN-05 pre-slot health check (prepare wake-up)', () => {
     expect(after!.errorCode).toBe('account_disconnected');
   });
 });
+
+describe('CONN-06 live quota endpoint', () => {
+  it('sandbox and disconnected accounts answer an empty quota list', async () => {
+    const ok = await w.as('viewer').http('get', `/accounts/${accountId}/quota`).expect(200);
+    expect(ok.body).toEqual([]); // sandbox → no live quota
+    await asLiveAccount();
+    await health().runMaintenance(expired as unknown as typeof fetch);
+    const dead = await w.as('viewer').http('get', `/accounts/${accountId}/quota`).expect(200);
+    expect(dead.body).toEqual([]); // disconnected → nothing to report
+    await w
+      .as('admin')
+      .http('post', '/accounts/sandbox')
+      .send({ platform: 'facebook', name: 'เพจทดสอบสุขภาพ' })
+      .expect(201); // restore for later suites
+  });
+});

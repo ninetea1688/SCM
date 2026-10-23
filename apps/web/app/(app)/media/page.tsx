@@ -1,10 +1,12 @@
 /**
  * MEDIA-02/03: media library. Thumbnails keep their true aspect ratio (9:16 reels next to 16:9
- * banners) because ratio is what the team chooses media by.
+ * banners) because ratio is what the team chooses media by. Filter bar: search, folder, tag,
+ * orientation, duration.
  */
 import { aspectLabel } from '@scm/domain';
 import Link from 'next/link';
 import { load } from '@/lib/load';
+import { type Facets, FilterBar, type FilterState } from './filter-bar';
 import { AutoRefresh, Uploader } from './uploader';
 
 interface Asset {
@@ -43,12 +45,37 @@ function fileSize(bytes: number): string {
 export default async function MediaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ kind?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { kind = '' } = await searchParams;
-  const valid = KINDS.some((k) => k.value === kind) ? kind : '';
-  const here = `/media${valid ? `?kind=${valid}` : ''}`;
-  const assets = await load<Asset[]>(`/media${valid ? `?kind=${valid}` : ''}`, here);
+  const sp = await searchParams;
+  const one = (k: string) => (typeof sp[k] === 'string' ? (sp[k] as string) : '');
+  const state: FilterState = {
+    q: one('q'),
+    kind: KINDS.some((k) => k.value === one('kind')) ? one('kind') : '',
+    folder: one('folder'),
+    tag: one('tag'),
+    aspect: ['square', 'portrait', 'landscape'].includes(one('aspect')) ? one('aspect') : '',
+    dur: /^\d*-\d*$/.test(one('dur')) ? one('dur') : '',
+  };
+  const qs = new URLSearchParams(Object.entries(state).filter(([, v]) => v) as [string, string][]);
+  const here = `/media${qs.toString() ? `?${qs.toString()}` : ''}`;
+
+  const params = new URLSearchParams();
+  if (state.kind) params.set('kind', state.kind);
+  if (state.folder) params.set('folder', state.folder);
+  if (state.tag) params.set('tag', state.tag);
+  if (state.q) params.set('q', state.q);
+  if (state.aspect) params.set('aspect', state.aspect);
+  if (state.dur) {
+    const [min, max] = state.dur.split('-');
+    if (min) params.set('minDurationSec', min);
+    if (max) params.set('maxDurationSec', max);
+  }
+  const query = params.toString();
+  const [assets, facets] = await Promise.all([
+    load<Asset[]>(`/media${query ? `?${query}` : ''}`, here),
+    load<Facets>('/media/facets', here),
+  ]);
   const processing = assets.some((a) => a.status === 'processing');
 
   return (
@@ -66,17 +93,24 @@ export default async function MediaPage({
       </div>
 
       <nav aria-label="ชนิดไฟล์" className="flex gap-1 border-b border-line text-sm">
-        {KINDS.map((k) => (
-          <Link
-            key={k.value}
-            href={k.value ? `/media?kind=${k.value}` : '/media'}
-            aria-current={valid === k.value ? 'page' : undefined}
-            className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted hover:text-ink aria-[current=page]:border-brand aria-[current=page]:font-medium aria-[current=page]:text-ink"
-          >
-            {k.label}
-          </Link>
-        ))}
+        {KINDS.map((k) => {
+          const p = new URLSearchParams(
+            Object.entries({ ...state, kind: k.value }).filter(([, v]) => v) as [string, string][],
+          );
+          return (
+            <Link
+              key={k.value}
+              href={k.value ? `/media?${p.toString()}` : '/media'}
+              aria-current={state.kind === k.value ? 'page' : undefined}
+              className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted hover:text-ink aria-[current=page]:border-brand aria-[current=page]:font-medium aria-[current=page]:text-ink"
+            >
+              {k.label}
+            </Link>
+          );
+        })}
       </nav>
+
+      <FilterBar state={state} facets={facets} />
 
       {processing && <AutoRefresh />}
 

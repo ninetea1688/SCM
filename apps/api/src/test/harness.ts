@@ -23,7 +23,7 @@ export async function bootApp(): Promise<INestApplication> {
   process.env.NODE_ENV = 'test';
   const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = mod.createNestApplication({ rawBody: true, logger: false });
-  app.setGlobalPrefix('api', { exclude: ['health', 'webhooks/{*path}'] });
+  app.setGlobalPrefix('api', { exclude: ['health', 'metrics', 'status', 'webhooks/{*path}'] });
   await app.init();
   return app;
 }

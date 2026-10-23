@@ -36,4 +36,10 @@ export class PublishQueue {
   async cancel(publishJobId: string, attempt: number | string): Promise<void> {
     await this.queue.remove(`${publishJobId}-${attempt}`).catch(() => undefined);
   }
+
+  /** OPS-03/04: queue depth for metrics and the status page. */
+  async counts(): Promise<Record<string, number>> {
+    const c = await this.queue.getJobCounts('waiting', 'delayed', 'active', 'failed', 'completed');
+    return c ?? {};
+  }
 }

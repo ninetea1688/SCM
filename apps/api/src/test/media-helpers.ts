@@ -36,11 +36,12 @@ export function mediaHelpers(app: () => INestApplication, world: () => World) {
     mimeType: string,
     fileName: string,
     declared = body.length,
+    extras: { folder?: string; tags?: string[] } = {},
   ) {
     const start = await world()
       .as('editor')
       .http('post', '/media/uploads')
-      .send({ fileName, mimeType, sizeBytes: declared })
+      .send({ fileName, mimeType, sizeBytes: declared, ...extras })
       .expect(201);
     const put = await fetch(start.body.uploadUrl, {
       method: 'PUT',
@@ -56,8 +57,13 @@ export function mediaHelpers(app: () => INestApplication, world: () => World) {
   }
 
   /** Upload, then run what the worker would run. */
-  async function upload(body: Buffer, mimeType: string, fileName: string): Promise<TestAsset> {
-    const { asset } = await uploadOnly(body, mimeType, fileName);
+  async function upload(
+    body: Buffer,
+    mimeType: string,
+    fileName: string,
+    extras: { folder?: string; tags?: string[] } = {},
+  ): Promise<TestAsset> {
+    const { asset } = await uploadOnly(body, mimeType, fileName, undefined, extras);
     expect(asset.status).toBe('processing');
     await app()
       .get(MediaProcessor)

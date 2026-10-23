@@ -20,7 +20,7 @@ import {
 } from '@nestjs/common';
 import { type Db, mediaAssets, withTenant } from '@scm/db';
 import { ACCEPTED_MIME_TYPES, mediaType } from '@scm/domain';
-import { and, arrayContains, count, desc, eq, inArray } from 'drizzle-orm';
+import { and, arrayContains, count, desc, eq, gte, ilike, inArray, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   type AuthUser,
@@ -41,9 +41,25 @@ const List = z.object({
   kind: z.enum(['image', 'video', 'document']).optional(),
   folder: z.string().optional(),
   tag: z.string().optional(),
+  /** MEDIA-02: free-text search over the original file name. */
+  q: z.string().max(200).optional(),
+  /** MEDIA-02: orientation bucket derived from width×height. */
+  aspect: z.enum(['square', 'portrait', 'landscape']).optional(),
+  /** MEDIA-02: video length window in seconds. */
+  minDurationSec: z.coerce.number().min(0).optional(),
+  maxDurationSec: z.coerce.number().min(0).optional(),
   /** Default: everything past upload (processing, ready, failed) so users see progress. */
   status: z.enum(['processing', 'ready', 'failed']).optional(),
 });
+
+/** Orientation bucket as SQL — ratio is what the team picks media by (MEDIA-02).
+ *  Square tolerates a 5% width/height difference (real files are rarely exact). */
+function aspectSql(aspect: 'square' | 'portrait' | 'landscape') {
+  const w = mediaAssets.width;
+  const h = mediaAssets.height;
+  if (aspect === 'square') return sql`abs(${w} - ${h}) * 20 <= greatest(${w}, ${h})`;
+  return aspect === 'portrait' ? sql`${h} > ${w}` : sql`${w} > ${h}`;
+}
 
 type Asset = typeof mediaAssets.$inferSelect;
 
@@ -172,6 +188,26 @@ export class MediaController {
     return this.view(row, { original: false });
   }
 
+  /** MEDIA-02: folders + tags for the filter UI (facets over the current library). */
+  @Get('facets')
+  @RequirePermission('report.view')
+  async facets(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser) {
+    return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {
+      const rows = await tx
+        .select({ folder: mediaAssets.folder, tags: mediaAssets.tags })
+        .from(mediaAssets)
+        .where(inArray(mediaAssets.status, ['processing', 'ready', 'failed']));
+      const folders = [...new Set(rows.map((r) => r.folder))].sort();
+      const tagCounts = new Map<string, number>();
+      for (const { tags } of rows)
+        for (const tag of tags ?? []) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+      const tags = [...tagCounts.entries()]
+        .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+        .map(([tag, n]) => ({ tag, count: n }));
+      return { folders, tags };
+    });
+  }
+
   @Get(':id')
   @RequirePermission('report.view')
   async get(
@@ -204,6 +240,14 @@ export class MediaController {
             f.kind ? eq(mediaAssets.kind, f.kind) : undefined,
             f.folder ? eq(mediaAssets.folder, f.folder) : undefined,
             f.tag ? arrayContains(mediaAssets.tags, [f.tag]) : undefined,
+            f.q ? ilike(mediaAssets.originalName, `%${f.q}%`) : undefined,
+            f.aspect ? aspectSql(f.aspect) : undefined,
+            f.minDurationSec !== undefined
+              ? gte(mediaAssets.durationSec, f.minDurationSec)
+              : undefined,
+            f.maxDurationSec !== undefined
+              ? lte(mediaAssets.durationSec, f.maxDurationSec)
+              : undefined,
           ),
         )
         .orderBy(desc(mediaAssets.createdAt))
