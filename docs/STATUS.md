@@ -20,7 +20,7 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | AUTH-01 Multi-workspace isolation | ✅ | `packages/db/src/rls.test.ts`, e2e "tenant isolation" |
 | AUTH-02 Multi-membership | ✅ | `withUser` + `GET /workspaces` |
 | AUTH-03 RBAC workspace + per-account scope | ✅ | `rules.test.ts` rbac, `TenantGuard`, `PostsService.account()` |
-| AUTH-04 2FA owner/admin | ✅ | smoke test; `TenantGuard` `mfa_required_for_role` |
+| AUTH-04 2FA owner/admin | 🟡 | smoke test; `TenantGuard` `mfa_required_for_role`. Enforcement config-gated (`AUTH_ENFORCE_MFA`: on in production, off in dev/test until SSO/Azure AD — SEC-02); `auth-mfa.e2e.test.ts` proves the gate |
 | AUTH-06 ≥2 owners | ✅ | e2e "membership" |
 | AUTH-07 Instant revoke + connected-accounts report | ✅ | e2e "membership" |
 | CONN-01 Meta OAuth (pages + IG) | 🟡 | `POST /accounts/meta` written, untested against Meta (needs App) |

@@ -18,6 +18,11 @@ const Env = z.object({
   REFRESH_TOKEN_TTL_SEC: z.coerce.number().default(14 * 24 * 3600),
   /** CONN-04: base64 32-byte key(s) "id:key,id:key"; first is used for new writes. */
   TOKEN_ENC_KEYS: z.string().default('k1:ZGV2LW9ubHktMzItYnl0ZS1rZXktY2hhbmdlLW1lISE='),
+  /**
+   * AUTH-04: enforce 2FA for owner/admin. Default: on in production, off in dev/test
+   * (Azure AD/SSO will take over this step later — SEC-02). Set explicitly to override.
+   */
+  AUTH_ENFORCE_MFA: z.stringbool().optional(),
 
   S3_ENDPOINT: z.string().default('http://localhost:8333'),
   /** Host used inside signed URLs — must be reachable by browsers and platforms. */
@@ -83,7 +88,9 @@ const Env = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 
-export type AppConfig = z.infer<typeof Env>;
+export type AppConfig = Omit<z.infer<typeof Env>, 'AUTH_ENFORCE_MFA'> & {
+  AUTH_ENFORCE_MFA: boolean;
+};
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = Env.safeParse(env);
@@ -98,7 +105,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       }
     }
   }
-  return cfg;
+  return { ...cfg, AUTH_ENFORCE_MFA: cfg.AUTH_ENFORCE_MFA ?? cfg.NODE_ENV === 'production' };
 }
 
 export const CONFIG = Symbol('CONFIG');

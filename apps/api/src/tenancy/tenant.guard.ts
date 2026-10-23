@@ -12,6 +12,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { type AppRequest, PERMISSION } from '../auth/auth.types';
 import { AuditService } from '../common/audit.service';
 import { APP_DB } from '../common/core.module';
+import { type AppConfig, CONFIG } from '../config';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -26,6 +27,7 @@ export class TenantGuard implements CanActivate {
     private readonly reflector: Reflector,
     @Inject(APP_DB) private readonly db: Db,
     private readonly audit: AuditService,
+    @Inject(CONFIG) private readonly cfg: AppConfig,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -65,7 +67,12 @@ export class TenantGuard implements CanActivate {
       killSwitch: row.killSwitch,
     };
 
-    if (ROLES_REQUIRING_2FA.includes(role) && !(user.totpEnabled && user.mfa)) {
+    // AUTH-04: enforcement is config-gated (off in dev/test until SSO lands — SEC-02).
+    if (
+      this.cfg.AUTH_ENFORCE_MFA &&
+      ROLES_REQUIRING_2FA.includes(role) &&
+      !(user.totpEnabled && user.mfa)
+    ) {
       throw new ForbiddenException({ code: 'mfa_required_for_role' });
     }
 
