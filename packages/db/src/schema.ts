@@ -140,6 +140,16 @@ export const mediaAssets = pgTable('media_assets', {
   status: text('status', { enum: ['uploading', 'processing', 'ready', 'failed'] })
     .notNull()
     .default('uploading'),
+  /** MEDIA-03 renditions (WebP), derived keys; null until processed or for documents. */
+  thumbnailKey: text('thumbnail_key'),
+  previewKey: text('preview_key'),
+  /** Thai reason shown to the user when status = failed. */
+  processingError: text('processing_error'),
+  /** Set when processing is (re)queued; the sweeper uses it to find stuck jobs (ADR-0008). */
+  processingStartedAt: timestamp('processing_started_at', { withTimezone: true }),
+  /** How many times the sweeper re-queued a stuck job; it gives up after a few. */
+  processingRequeues: integer('processing_requeues').notNull().default(0),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
   source: text('source'),
   license: text('license'),
   rightsExpireAt: timestamp('rights_expire_at', { withTimezone: true }),
@@ -404,6 +414,10 @@ export const inboundEvents = pgTable(
     externalEventId: text('external_event_id'),
     payload: jsonb('payload').notNull(),
     receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Set when processing is (re)queued; the sweeper uses it to find stuck jobs (ADR-0008). */
+    processingStartedAt: timestamp('processing_started_at', { withTimezone: true }),
+    /** How many times the sweeper re-queued a stuck job; it gives up after a few. */
+    processingRequeues: integer('processing_requeues').notNull().default(0),
     processedAt: timestamp('processed_at', { withTimezone: true }),
   },
   (t) => [

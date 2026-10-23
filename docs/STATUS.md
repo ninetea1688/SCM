@@ -1,13 +1,13 @@
 # Delivery status — traceability matrix
 
-**Current phase: P1 MVP (walking skeleton done).** Last updated 2026-10-23.
+**Current phase: P1 MVP (walking skeleton done).** Last updated 2026-10-23 (MEDIA-03).
 Legend: ✅ done + tested · 🟡 partial · ⬜ not started · ⏸ blocked (reason).
 Evidence = the test that proves the AC. Update this file in the same change that moves a row
 (the `/implement-req` skill does it). The SessionStart hook prints the "Next up" list.
 
 ## Next up (P1, in order)
 
-1. MEDIA-03/04 thumbnails + FFmpeg/Sharp conversion worker
+1. MEDIA-04 FFmpeg/Sharp conversion (HEIC→JPG, video→MP4 H.264) on the MEDIA-03 pipeline
 2. Instagram live adapter (containers, `content_publishing_limit`, `prepare()` pre-stage)
 3. CONN-05/07 token refresh + pre-slot health check job + disconnect alerts
 4. CAL-01 drag-and-drop reschedule, week/day/list views; CAL-03 Thai holidays; CAL-05 quota hints in UI
@@ -31,11 +31,11 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | CONN-05 Auto refresh + pre-slot health check | ⬜ | |
 | CONN-06 Health dashboard | 🟡 | `/accounts` page; quota column pending |
 | CONN-07 Disconnect alert + reconnect | 🟡 | publish fails loudly with `account_disconnected`; proactive alert pending |
-| MEDIA-01 Presigned direct upload | ✅ | `MediaController`; UI uploader pending |
-| MEDIA-02 Folders/tags/search | 🟡 | API filters; UI pending |
-| MEDIA-03 Thumbnails | ⬜ | |
+| MEDIA-01 Presigned direct upload | ✅ | `media.e2e.test.ts` (real SeaweedFS PUT); `/media` uploader. Fixed SDK checksum bug that broke browser PUTs |
+| MEDIA-02 Folders/tags/search | 🟡 | API filters kind/folder/tag; `/media` filters by kind. Missing: aspect-ratio + duration filters (API and UI), search, folder/tag UI |
+| MEDIA-03 Thumbnails + preview | ✅ | `media.e2e.test.ts` (15 tests): image/video/EXIF renditions, no upscale, poster frame content, audit event, queue hand-off + re-queue, final-attempt failure, sweeper; safety per ADR-0008 (allowlist, format match, size match, pixel cap, disguised playlist, immutable key). Video preview = poster still; documents: no preview yet |
 | MEDIA-04 FFmpeg/Sharp conversion | ⬜ | |
-| MEDIA-06 Short-lived signed URLs | ✅ | `StorageService.presignGet`, public endpoint split |
+| MEDIA-06 Short-lived signed URLs | ✅ | `StorageService.presignGet` (TTL from config), public endpoint split; originals signed as attachment only |
 | POST-01 Post → variants | ✅ | e2e, composer UI |
 | POST-02 Per-platform options | 🟡 | schema + validation; UI only for YouTube title |
 | POST-04 validate() (moved to P1, ADR-0002) | ✅ | `rules.test.ts`, e2e "POST-04 AC" |
@@ -63,6 +63,12 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | SEC-01/03 | ✅ | crypto, webhook signature tests |
 | PDPA-01/02/03 | ⬜ | P0 documents + P1 data-subject flow |
 | Staging + deploy | 🟡 | Docker Compose only (no hosted CI, owner decision 2026-10-23); `pnpm verify` before every deploy; staging host pending |
+
+## Known follow-ups
+
+- MEDIA-08: delete orphaned uploads/renditions of failed or abandoned assets (PDPA retention)
+- Prod hardening for the worker: size-limited temp volume, no egress to internal hosts (ADR-0008)
+- HEIC uploads need libheif in the image or will fail until MEDIA-04 conversion
 
 ## Phase 0 blockers (owner actions, outside code)
 

@@ -13,3 +13,4 @@ Never edit an Accepted ADR's decision — write a new one that supersedes it.
 | [0005](0005-rbac-clarifications.md) | RBAC: supervisor = Approver, Topic Owner = grant, System Admin = flag | Proposed — needs PRD owner sign-off |
 | [0006](0006-tenant-isolation-rls.md) | Tenant isolation with Postgres Row-Level Security | Accepted |
 | [0007](0007-audit-vs-event-log.md) | Audit log vs Event log | Accepted |
+| [0008](0008-media-upload-safety-and-lifecycle.md) | Media upload safety and processing lifecycle | Accepted |

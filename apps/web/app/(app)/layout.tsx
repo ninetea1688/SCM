@@ -14,6 +14,7 @@ interface Ws {
 const NAV = [
   { href: '/calendar', label: 'ปฏิทิน' },
   { href: '/posts/new', label: 'สร้างโพสต์' },
+  { href: '/media', label: 'คลังสื่อ' },
   { href: '/accounts', label: 'บัญชีโซเชียล' },
 ];
 
