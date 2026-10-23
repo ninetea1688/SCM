@@ -94,13 +94,22 @@ export default async function CalendarPage({
             <span className="ml-2 text-sm font-normal text-muted">({y})</span>
           </h1>
           <div className="ml-auto flex gap-1 whitespace-nowrap text-sm">
-            <Link href={`/calendar?m=${prev}`} className="rounded-md border border-line px-3 py-1">
+            <Link
+              href={`/calendar?m=${prev}`}
+              className="rounded-full border border-line px-3.5 py-1.5 text-muted transition-colors hover:border-brand hover:text-brand"
+            >
               ก่อนหน้า
             </Link>
-            <Link href="/calendar" className="rounded-md border border-line px-3 py-1">
+            <Link
+              href="/calendar"
+              className="rounded-full border border-line px-3.5 py-1.5 text-muted transition-colors hover:border-brand hover:text-brand"
+            >
               เดือนนี้
             </Link>
-            <Link href={`/calendar?m=${next}`} className="rounded-md border border-line px-3 py-1">
+            <Link
+              href={`/calendar?m=${next}`}
+              className="rounded-full border border-line px-3.5 py-1.5 text-muted transition-colors hover:border-brand hover:text-brand"
+            >
               ถัดไป
             </Link>
           </div>
@@ -188,7 +197,7 @@ export default async function CalendarPage({
           </h2>
           <Link
             href="/posts/new"
-            className="rounded-md bg-brand px-3 py-1.5 text-sm text-brand-ink"
+            className="rounded-full bg-brand px-4 py-2 text-sm font-medium text-brand-ink shadow-sm transition-colors hover:bg-brand-deep"
           >
             สร้างโพสต์
           </Link>

@@ -1,19 +1,25 @@
 @import "tailwindcss";
 
-/* Design tokens. Components use these via Tailwind's theme — never raw hex in components. */
+/*
+ * Design tokens — NHSO corporate identity (น้ำเงิน ขาว เขียว).
+ * Components use these via Tailwind's theme — never raw hex in components.
+ * brand = น้ำเงิน (primary), brand-2 = เขียว (accent), brand-deep = sidebar/gradient.
+ */
 @theme {
   --font-sans: var(--font-thai), ui-sans-serif, system-ui, sans-serif;
 
-  --color-bg: #f7f7f5;
+  --color-bg: #f2f6fa;
   --color-surface: #ffffff;
-  --color-ink: #1c1f23;
-  --color-muted: #5f6670;
-  --color-line: #e3e4e1;
-  --color-brand: #0b6e4f;
+  --color-ink: #10304f;
+  --color-muted: #5b6e82;
+  --color-line: #d9e3ee;
+  --color-brand: #005da8;
+  --color-brand-deep: #083a66;
+  --color-brand-2: #63b32f;
   --color-brand-ink: #ffffff;
   --color-danger: #b42318;
   --color-warn: #b54708;
-  --color-ok: #067647;
+  --color-ok: #1e7a3c;
   --color-on-danger: #ffffff;
 
   /* Platform colours (CAL-02). */
@@ -29,13 +35,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg: #121416;
-    --color-surface: #1b1e21;
-    --color-ink: #eceef0;
-    --color-muted: #a1a8b1;
-    --color-line: #2c3136;
-    --color-brand: #3fbf8f;
-    --color-brand-ink: #0b1a14;
+    --color-bg: #0d1520;
+    --color-surface: #16222f;
+    --color-ink: #e6edf4;
+    --color-muted: #93a5b8;
+    --color-line: #27364a;
+    --color-brand: #57a5e8;
+    --color-brand-deep: #0c2b4d;
+    --color-brand-2: #8ecb5a;
+    --color-brand-ink: #06203a;
   }
 }
 
@@ -48,4 +56,9 @@ html {
 :focus-visible {
   outline: var(--focus-ring-width) solid var(--color-brand);
   outline-offset: var(--focus-ring-offset);
+}
+
+/* Subtle brand gradient used by the app shell and login panel. */
+.bg-brand-hero {
+  background-image: linear-gradient(160deg, var(--color-brand-deep) 0%, var(--color-brand) 100%);
 }

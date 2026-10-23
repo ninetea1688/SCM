@@ -3,7 +3,7 @@ import { loadConfig } from './config';
 
 const base = {
   JWT_SECRET: 'x'.repeat(32),
-  TOKEN_ENC_KEYS: 'k1:' + Buffer.alloc(32, 7).toString('base64'),
+  TOKEN_ENC_KEYS: `k1:${Buffer.alloc(32, 7).toString('base64')}`,
   S3_SECRET_KEY: 'real-secret',
 };
 
