@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ROLES } from '@scm/domain';
 import { z } from 'zod';
 import {
@@ -19,6 +30,8 @@ const Member = z.object({
   accountScope: z.array(z.uuid()).optional(),
 });
 const Revoke = z.object({ allSessions: z.stringbool().default(true) });
+/** PRD §0: workspace-level behaviour toggles; extend as features land. */
+const Settings = z.object({ allowSelfApproval: z.boolean() }).strict();
 
 @Controller('workspaces')
 export class WorkspacesController {
@@ -32,6 +45,20 @@ export class WorkspacesController {
   @Post()
   create(@CurrentUser() u: AuthUser, @Body() body: unknown) {
     return this.ws.create(u, parseInput(Create, body).name);
+  }
+
+  @Get('current')
+  @UseGuards(TenantGuard)
+  current(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser) {
+    return this.ws.current(t, u);
+  }
+
+  /** PRD §0 + role table: admins manage members, the owner owns workspace policy. */
+  @Patch('current/settings')
+  @UseGuards(TenantGuard)
+  @RequirePermission('workspace.policy')
+  updateSettings(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser, @Body() body: unknown) {
+    return this.ws.updateSettings(t, u, parseInput(Settings, body));
   }
 
   @Get('current/members')

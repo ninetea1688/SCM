@@ -59,6 +59,7 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | INT-04 Meta data-deletion callback | ✅ | callback verified + recorded; worker job deletes matching inbound events and closes the request (`pdpa.e2e.test.ts`) |
 | SEC-01/03 | ✅ | crypto, webhook signature tests |
 | PDPA-01/02/03 | 🟡 | PDPA-02 ✅ self-service data-subject requests: file/list/export JSON (ขอดู), owner queue + audited handling; erase removes the user's copies (`pdpa.e2e.test.ts`). PDPA-01/03 documents remain owner actions |
+| Workspace settings (PRD §0, role table) | ✅ | `/settings` in the nav: approval policy toggle (owner-only `PATCH /workspaces/current/settings`, audited), member management (list/add/revoke — the existing AUTH-06/07 API), audit trail (30 latest), 2FA link; `workspaces.e2e.test.ts` proves the owner-only write + audit entry |
 | Staging + deploy | 🟡 | Docker Compose only (no hosted CI, owner decision 2026-10-23); `pnpm verify` before every deploy; staging **stack** done + boot-verified locally (compose `ENV_FILE`, `.env.staging.example`, sandbox opt-in, runbook §Staging); staging **host** pending (owner) |
 
 ## Known follow-ups

@@ -83,6 +83,40 @@ export class WorkspacesService {
     );
   }
 
+  /** PRD §0: workspace behaviour lives in a configurable settings object, not in code. */
+  async current(t: TenantInfo, u: AuthUser) {
+    return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {
+      const [ws] = await tx
+        .select({ id: workspaces.id, name: workspaces.name, settings: workspaces.settings })
+        .from(workspaces)
+        .where(eq(workspaces.id, t.workspaceId));
+      if (!ws) throw new NotFoundException({ code: 'workspace_not_found' });
+      return { ...ws, role: t.role };
+    });
+  }
+
+  async updateSettings(t: TenantInfo, u: AuthUser, patch: { allowSelfApproval: boolean }) {
+    return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {
+      const [ws] = await tx
+        .select({ settings: workspaces.settings })
+        .from(workspaces)
+        .where(eq(workspaces.id, t.workspaceId));
+      const before = (ws!.settings ?? {}) as Record<string, unknown>;
+      const after = { ...before, allowSelfApproval: patch.allowSelfApproval };
+      await tx.update(workspaces).set({ settings: after }).where(eq(workspaces.id, t.workspaceId));
+      await this.audit.record(tx, {
+        workspaceId: t.workspaceId,
+        actorUserId: u.userId,
+        action: 'workspace.settings',
+        targetType: 'workspace',
+        targetId: t.workspaceId,
+        before,
+        after,
+      });
+      return after;
+    });
+  }
+
   async addMember(
     t: TenantInfo,
     u: AuthUser,
