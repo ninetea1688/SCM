@@ -267,6 +267,67 @@ export class InboxService {
     );
   }
 
+  /** CRM-01: contact profile — identity + conversation history stats. */
+  async profile(t: TenantInfo, u: AuthUser, conversationId: string) {
+    return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {
+      const [conv] = await tx
+        .select({
+          id: conversations.id,
+          platform: conversations.platform,
+          accountName: socialAccounts.name,
+          externalUserId: conversations.externalUserId,
+          externalUserName: conversations.externalUserName,
+          status: conversations.status,
+          assignee: users.displayName,
+          createdAt: conversations.createdAt,
+          lastMessageAt: conversations.lastMessageAt,
+        })
+        .from(conversations)
+        .innerJoin(socialAccounts, eq(socialAccounts.id, conversations.socialAccountId))
+        .leftJoin(users, eq(users.id, conversations.assigneeId))
+        .where(
+          and(eq(conversations.id, conversationId), eq(conversations.workspaceId, t.workspaceId)),
+        );
+      if (!conv) throw new NotFoundException({ code: 'conversation_not_found' });
+      const counts = await tx
+        .select({
+          direction: inboxMessages.direction,
+          n: sql<number>`count(*)::int`,
+        })
+        .from(inboxMessages)
+        .where(
+          and(
+            eq(inboxMessages.conversationId, conversationId),
+            eq(inboxMessages.isInternalNote, false),
+          ),
+        )
+        .groupBy(inboxMessages.direction);
+      const received = counts.find((c) => c.direction === 'in')?.n ?? 0;
+      const sent = counts.find((c) => c.direction === 'out')?.n ?? 0;
+      // CRM-01: the same contact on other accounts of this workspace.
+      const otherThreads = await tx
+        .select({ id: conversations.id, accountName: socialAccounts.name })
+        .from(conversations)
+        .innerJoin(socialAccounts, eq(socialAccounts.id, conversations.socialAccountId))
+        .where(
+          and(
+            eq(conversations.workspaceId, t.workspaceId),
+            eq(conversations.externalUserId, conv.externalUserId),
+          ),
+        );
+      return {
+        ...conv,
+        stats: {
+          firstContactAt: conv.createdAt,
+          received,
+          sent,
+          total: received + sent,
+        },
+        otherThreads,
+      };
+    });
+  }
+
   messages(t: TenantInfo, u: AuthUser, conversationId: string) {
     return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, (tx) =>
       tx

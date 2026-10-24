@@ -156,6 +156,15 @@ describe('chat desk (INBOX-01/02)', () => {
     expect(after.body).toHaveLength(1);
     expect(after.body[0].assignee).toBeTruthy(); // INBOX-02: the answerer owns the thread
 
+    // CRM-01: contact profile with history stats.
+    const prof = await w
+      .as('agent')
+      .http('get', `/inbox/conversations/${after.body[0].id}/profile`)
+      .expect(200);
+    expect(prof.body).toMatchObject({ platform: 'line', externalUserId: 'U-citizen' });
+    expect(prof.body.stats).toMatchObject({ received: 1, sent: 2, total: 3 }); // auto-reply counts as sent
+    expect(prof.body.otherThreads).toHaveLength(1);
+
     await w
       .as('agent')
       .http('post', `/inbox/conversations/${id}/status`)

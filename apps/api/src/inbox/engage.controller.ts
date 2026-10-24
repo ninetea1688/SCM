@@ -52,6 +52,17 @@ export class EngageController {
     return this.inbox.conversations(t, u, parseInput(ListQuery, q));
   }
 
+  /** CRM-01: contact profile + history stats. */
+  @Get('inbox/conversations/:id/profile')
+  @RequirePermission('inbox.reply')
+  profile(
+    @Tenant() t: TenantInfo,
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.inbox.profile(t, u, id);
+  }
+
   @Get('inbox/conversations/:id/messages')
   @RequirePermission('inbox.reply')
   messages(
