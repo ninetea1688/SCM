@@ -1,12 +1,13 @@
 /**
- * MEDIA-02/03: media library. Thumbnails keep their true aspect ratio (9:16 reels next to 16:9
- * banners) because ratio is what the team chooses media by. Filter bar: search, folder, tag,
- * orientation, duration.
+ * MEDIA-02/03/05/07: media library. Thumbnails keep their true aspect ratio (9:16 reels next to
+ * 16:9 banners) because ratio is what the team chooses media by. Filter bar: search, folder, tag,
+ * orientation, duration. Cards show the aspect-ratio crops (MEDIA-05) and usage rights (MEDIA-07).
  */
-import { aspectLabel } from '@scm/domain';
+import { aspectLabel, RIGHTS_WARN_DAYS } from '@scm/domain';
 import Link from 'next/link';
 import { load } from '@/lib/load';
 import { type Facets, FilterBar, type FilterState } from './filter-bar';
+import { RightsEditor } from './rights-editor';
 import { AutoRefresh, Uploader } from './uploader';
 
 interface Asset {
@@ -21,6 +22,11 @@ interface Asset {
   processingError: string | null;
   thumbnailUrl: string | null;
   originalUrl: string | null;
+  crops: Record<string, string> | null;
+  source: string | null;
+  license: string | null;
+  rightsExpireAt: string | null;
+  consentOnFile: boolean;
 }
 
 const KINDS = [
@@ -34,6 +40,13 @@ function duration(sec: number): string {
   const s = Math.round(sec);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
+
+const thDate = new Intl.DateTimeFormat('th-TH-u-ca-buddhist', {
+  timeZone: 'Asia/Bangkok',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
 
 function fileSize(bytes: number): string {
   const mb = bytes / 1024 ** 2;
@@ -120,6 +133,9 @@ export default async function MediaPage({
         <ul className="columns-2 gap-4 sm:columns-3 lg:columns-5 [&>li]:mb-5 [&>li]:break-inside-avoid">
           {assets.map((a) => {
             const ratio = a.width && a.height ? `${a.width} / ${a.height}` : '1 / 1';
+            const daysLeft = a.rightsExpireAt
+              ? Math.ceil((new Date(a.rightsExpireAt).getTime() - Date.now()) / 86_400_000)
+              : null;
             return (
               <li key={a.id}>
                 <figure>
@@ -174,7 +190,51 @@ export default async function MediaPage({
                     ) : (
                       <span className="text-xs text-muted">{fileSize(a.sizeBytes)}</span>
                     )}
+                    {daysLeft !== null && (
+                      <span
+                        className={`block text-xs ${daysLeft < 0 ? 'text-danger' : daysLeft <= RIGHTS_WARN_DAYS ? 'text-warn' : 'text-muted'}`}
+                      >
+                        {daysLeft < 0
+                          ? '⚠ สิทธิ์การใช้หมดอายุแล้ว'
+                          : `สิทธิ์การใช้ถึง ${thDate.format(new Date(a.rightsExpireAt!))}`}
+                      </span>
+                    )}
+                    {a.source && (
+                      <span className="block truncate text-xs text-muted">ที่มา: {a.source}</span>
+                    )}
                   </figcaption>
+                  {a.status === 'ready' && Object.keys(a.crops ?? {}).length > 0 && (
+                    <span className="mt-1 flex gap-1" title="ภาพตัดตามสัดส่วน">
+                      {Object.entries(a.crops!).map(([r, url]) => (
+                        <span key={r} className="relative w-1/4 overflow-hidden rounded-sm bg-line">
+                          {/* biome-ignore lint/performance/noImgElement: signed rendition URLs */}
+                          <img
+                            src={url}
+                            alt={`สัดส่วน ${r}`}
+                            loading="lazy"
+                            className="h-10 w-full object-cover"
+                          />
+                          <span className="absolute bottom-0 right-0 rounded bg-ink/70 px-0.5 text-[9px] text-surface">
+                            {r}
+                          </span>
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                  {a.status === 'ready' && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-xs text-muted hover:text-ink">
+                        ข้อมูลสิทธิ์{a.consentOnFile ? ' (มีความยินยอม ✓)' : ''}
+                      </summary>
+                      <RightsEditor
+                        id={a.id}
+                        source={a.source}
+                        license={a.license}
+                        rightsExpireAt={a.rightsExpireAt}
+                        consentOnFile={a.consentOnFile}
+                      />
+                    </details>
+                  )}
                 </figure>
               </li>
             );

@@ -21,6 +21,9 @@ import { promisify } from 'node:util';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { type Db, mediaAssets, withTenant } from '@scm/db';
 import {
+  CROP_RATIOS,
+  cropBox,
+  cropKey,
   formatMatches,
   isHeif,
   mediaType,
@@ -29,6 +32,7 @@ import {
   posterTimeSec,
   publishKey,
   renditionKey,
+  type Size,
   type VideoFacts,
   type VideoPlan,
 } from '@scm/domain';
@@ -135,7 +139,12 @@ export class MediaProcessor {
           width: probe.width,
           height: probe.height,
           durationSec: probe.durationSec ?? null,
-          ...(await this.renditions(key, probe.frame)),
+          ...(await this.renditions(
+            key,
+            probe.frame,
+            { width: probe.width, height: probe.height },
+            type.kind,
+          )),
           ...published,
         };
       }
@@ -310,16 +319,21 @@ export class MediaProcessor {
     return out;
   }
 
-  /** Decode once, write both renditions. */
-  private async renditions(key: string, frame: string) {
+  /** Decode once, write both renditions and — MEDIA-05 — the per-platform aspect-ratio crops. */
+  private async renditions(key: string, frame: string, original: Size, _kind: 'image' | 'video') {
     const base = sharp(frame, {
       limitInputPixels: this.cfg.MEDIA_MAX_INPUT_PIXELS,
       failOn: 'error',
       sequentialRead: true,
     }).rotate();
-    const out: { thumbnailKey: string; previewKey: string } = {
+    const out: {
+      thumbnailKey: string;
+      previewKey: string;
+      crops: Record<string, string> | null;
+    } = {
       thumbnailKey: renditionKey(key, 'thumb'),
       previewKey: renditionKey(key, 'preview'),
+      crops: null,
     };
     for (const [k, px] of [
       [out.thumbnailKey, this.cfg.MEDIA_THUMB_PX],
@@ -335,6 +349,23 @@ export class MediaProcessor {
         });
       await this.storage.put(k, webp, 'image/webp');
     }
+    // MEDIA-05: cover-crop each ratio from the same frame (video uses its poster).
+    const crops: Record<string, string> = {};
+    for (const ratio of CROP_RATIOS) {
+      const box = cropBox(original, ratio, this.cfg.MEDIA_PREVIEW_PX);
+      const webp = await base
+        .clone()
+        .resize({ ...box, fit: 'cover' })
+        .webp({ quality: this.cfg.MEDIA_WEBP_QUALITY })
+        .toBuffer()
+        .catch(() => {
+          throw new ContentError('ตัดภาพตามสัดส่วนไม่สำเร็จ ไฟล์อาจเสียหาย');
+        });
+      const k = cropKey(key, ratio);
+      await this.storage.put(k, webp, 'image/webp');
+      crops[ratio] = k;
+    }
+    out.crops = crops;
     return out;
   }
 

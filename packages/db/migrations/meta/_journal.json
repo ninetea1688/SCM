@@ -79,6 +79,13 @@
       "when": 1792812641288,
       "tag": "0010_previous_nebula",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792820558784,
+      "tag": "0011_mighty_glorian",
+      "breakpoints": true
     }
   ]
 }

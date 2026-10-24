@@ -36,6 +36,7 @@ import {
   type Permission,
   type Platform,
   type QuotaCheck,
+  RIGHTS_WARN_DAYS,
   type TransitionContext,
   transitionVariant,
   type ValidationIssue,
@@ -638,6 +639,8 @@ export class PostsService {
       .select({
         id: mediaAssets.id,
         kind: mediaAssets.kind,
+        originalName: mediaAssets.originalName,
+        rightsExpireAt: mediaAssets.rightsExpireAt,
         // validate() checks what will actually be published (MEDIA-04 / ADR-0009).
         mimeType: sql<string>`coalesce(${mediaAssets.publishMimeType}, ${mediaAssets.mimeType})`,
         sizeBytes: sql<number>`coalesce(${mediaAssets.publishSizeBytes}, ${mediaAssets.sizeBytes})`,
@@ -667,6 +670,27 @@ export class PostsService {
       },
       facts,
     );
+    // MEDIA-07: lapsed rights block submission; an expiry within RIGHTS_WARN_DAYS warns.
+    const dayMs = 24 * 3600_000;
+    for (const m of media) {
+      if (!m.rightsExpireAt) continue;
+      const daysLeft = Math.ceil((m.rightsExpireAt.getTime() - Date.now()) / dayMs);
+      if (daysLeft < 0) {
+        issues.push({
+          code: 'media_rights_expired',
+          severity: 'error',
+          field: 'media',
+          messageTh: `สื่อ “${m.originalName}” หมดสิทธิ์การใช้แล้ว ต้องต่อสิทธิ์หรือเปลี่ยนไฟล์ก่อนโพสต์`,
+        });
+      } else if (daysLeft <= RIGHTS_WARN_DAYS) {
+        issues.push({
+          code: 'media_rights_expiring',
+          severity: 'warning',
+          field: 'media',
+          messageTh: `สื่อ “${m.originalName}” จะหมดสิทธิ์ในอีก ${daysLeft} วัน`,
+        });
+      }
+    }
     return { ...v, mediaIds: media.map((m) => m.id), issues };
   }
 
@@ -688,12 +712,19 @@ export class PostsService {
   private async setMedia(tx: Tx, t: TenantInfo, variantId: string, mediaIds: string[]) {
     await tx.delete(variantMedia).where(eq(variantMedia.variantId, variantId));
     if (mediaIds.length === 0) return;
+    // MEDIA-07: media whose usage rights have lapsed must not enter the publishing pipeline.
     const found = await tx
-      .select({ id: mediaAssets.id })
+      .select({ id: mediaAssets.id, rightsExpireAt: mediaAssets.rightsExpireAt })
       .from(mediaAssets)
       .where(and(inArray(mediaAssets.id, mediaIds), eq(mediaAssets.status, 'ready')));
     if (found.length !== new Set(mediaIds).size) {
       throw new BadRequestException({ code: 'media_not_ready', message: 'มีไฟล์สื่อที่ยังไม่พร้อมใช้' });
+    }
+    if (found.some((m) => m.rightsExpireAt && m.rightsExpireAt.getTime() < Date.now())) {
+      throw new BadRequestException({
+        code: 'media_rights_expired',
+        message: 'มีสื่อที่หมดสิทธิ์การใช้แล้ว กรุณาต่อสิทธิ์หรือเปลี่ยนไฟล์ก่อน',
+      });
     }
     await tx.insert(variantMedia).values(
       mediaIds.map((mediaAssetId, position) => ({

@@ -14,6 +14,7 @@ import {
   NotFoundException,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -67,6 +68,7 @@ type Asset = typeof mediaAssets.$inferSelect;
 @UseGuards(TenantGuard)
 export class MediaController {
   private readonly Upload;
+  private readonly Rights;
 
   constructor(
     @Inject(APP_DB) private readonly db: Db,
@@ -83,7 +85,20 @@ export class MediaController {
       sizeBytes: z.number().int().positive().max(cfg.MEDIA_MAX_BYTES),
       folder: z.string().max(500).default('/'),
       tags: z.array(z.string().max(50)).max(30).default([]),
+      /** MEDIA-07 usage rights, known at upload time (editable later via PATCH /:id/rights). */
+      source: z.string().max(300).optional(),
+      license: z.string().max(200).optional(),
+      rightsExpireAt: z.coerce.date().optional(),
+      consentOnFile: z.boolean().optional(),
     });
+    this.Rights = z
+      .object({
+        source: z.string().max(300).nullable().optional(),
+        license: z.string().max(200).nullable().optional(),
+        rightsExpireAt: z.coerce.date().nullable().optional(),
+        consentOnFile: z.boolean().optional(),
+      })
+      .refine((r) => Object.keys(r).length > 0, { message: 'ต้องระบุอย่างน้อยหนึ่งฟิลด์' });
   }
 
   @Post('uploads')
@@ -118,6 +133,10 @@ export class MediaController {
             sizeBytes: input.sizeBytes,
             folder: input.folder,
             tags: input.tags,
+            source: input.source ?? null,
+            license: input.license ?? null,
+            rightsExpireAt: input.rightsExpireAt ?? null,
+            consentOnFile: input.consentOnFile ?? false,
             createdBy: u.userId,
           })
           .returning();
@@ -224,6 +243,55 @@ export class MediaController {
     return this.view(row, { original: true });
   }
 
+  /** MEDIA-07: record/adjust usage rights; every change is audited. */
+  @Patch(':id/rights')
+  @RequirePermission('post.edit')
+  async updateRights(
+    @Tenant() t: TenantInfo,
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() b: unknown,
+  ) {
+    const patch = parseInput(this.Rights, b);
+    return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {
+      const [before] = await tx
+        .select({
+          source: mediaAssets.source,
+          license: mediaAssets.license,
+          rightsExpireAt: mediaAssets.rightsExpireAt,
+          consentOnFile: mediaAssets.consentOnFile,
+        })
+        .from(mediaAssets)
+        .where(eq(mediaAssets.id, id));
+      if (!before) throw new NotFoundException({ code: 'media_not_found' });
+      const [row] = await tx
+        .update(mediaAssets)
+        .set({
+          ...(patch.source !== undefined ? { source: patch.source } : {}),
+          ...(patch.license !== undefined ? { license: patch.license } : {}),
+          ...(patch.rightsExpireAt !== undefined ? { rightsExpireAt: patch.rightsExpireAt } : {}),
+          ...(patch.consentOnFile !== undefined ? { consentOnFile: patch.consentOnFile } : {}),
+        })
+        .where(eq(mediaAssets.id, id))
+        .returning();
+      await this.audit.record(tx, {
+        workspaceId: t.workspaceId,
+        actorUserId: u.userId,
+        action: 'media.rights',
+        targetType: 'media_asset',
+        targetId: id,
+        before,
+        after: {
+          source: row!.source,
+          license: row!.license,
+          rightsExpireAt: row!.rightsExpireAt,
+          consentOnFile: row!.consentOnFile,
+        },
+      });
+      return this.view(row!, { original: false });
+    });
+  }
+
   @Get()
   @RequirePermission('report.view')
   async list(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser, @Query() q: unknown) {
@@ -263,10 +331,17 @@ export class MediaController {
   private async view(a: Asset, opts: { original: boolean }) {
     const ttlSec = this.cfg.PREVIEW_URL_TTL_SEC;
     const sign = (key: string | null) => (key ? this.storage.presignGet(key, { ttlSec }) : null);
+    // MEDIA-05: signed URLs per aspect ratio (undefined entries stay absent).
+    const crops: Record<string, string> = {};
+    for (const [ratio, key] of Object.entries(a.crops ?? {})) {
+      const url = await sign(key);
+      if (url) crops[ratio] = url;
+    }
     return {
       ...a,
       thumbnailUrl: await sign(a.thumbnailKey),
       previewUrl: await sign(a.previewKey),
+      crops,
       /** The converted file platforms will receive (MEDIA-04); shown so staff can check it. */
       publishUrl: await sign(a.publishKey),
       originalUrl:

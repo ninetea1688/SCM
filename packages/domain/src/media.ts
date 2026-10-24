@@ -121,3 +121,47 @@ export function planVideo(f: VideoFacts, maxLongSide: number): VideoPlan {
 export function publishKey(storageKey: string, kind: 'image' | 'video'): string {
   return `${storageKey}.publish.${kind === 'image' ? 'jpg' : 'mp4'}`;
 }
+
+// ── MEDIA-05: multi-ratio crops ──────────────────────────────────────────────────────────────
+
+/** The ratios staff need per platform: square feed, portrait feed, story/reel, landscape. */
+export const CROP_RATIOS = ['1:1', '4:5', '9:16', '16:9'] as const;
+export type CropRatio = (typeof CROP_RATIOS)[number];
+
+const CROP_VALUE: Record<CropRatio, number> = {
+  '1:1': 1,
+  '4:5': 0.8,
+  '9:16': 9 / 16,
+  '16:9': 16 / 9,
+};
+
+/** Storage key for an aspect-ratio crop, derived from the original like every rendition. */
+export function cropKey(storageKey: string, ratio: CropRatio): string {
+  return `${storageKey}.crop-${ratio.replace(':', '-')}.webp`;
+}
+
+/**
+ * Cover-crop box for `ratio`: as large as fits inside the original (never upscales) and
+ * capped so the long side stays within `maxPx`.
+ */
+export function cropBox(original: Size, ratio: CropRatio, maxPx: number): Size {
+  const r = CROP_VALUE[ratio];
+  let width = Math.min(original.width, Math.floor(original.height * r));
+  let height = Math.round(width / r);
+  if (height > original.height) {
+    height = original.height;
+    width = Math.floor(height * r);
+  }
+  const long = Math.max(width, height);
+  if (long > maxPx) {
+    const scale = maxPx / long;
+    width = Math.floor(width * scale);
+    height = Math.floor(height * scale);
+  }
+  return { width: Math.max(width, 1), height: Math.max(height, 1) };
+}
+
+// ── MEDIA-07: usage rights ───────────────────────────────────────────────────────────────────
+
+/** Warn this many days before rightsExpireAt when the media is attached to a variant. */
+export const RIGHTS_WARN_DAYS = 7;

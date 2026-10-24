@@ -161,14 +161,19 @@ export const mediaAssets = pgTable('media_assets', {
    * The row stays for audit; the sweeper skips assets with this set.
    */
   orphanCleanedAt: timestamp('orphan_cleaned_at', { withTimezone: true }),
+  /** MEDIA-05: signed-URL keys of the aspect-ratio crops, e.g. { "1:1": "ws/…/x.jpg.crop-1-1.webp" }. */
+  crops: jsonb('crops').$type<Record<string, string> | null>(),
   /** Set when processing is (re)queued; the sweeper uses it to find stuck jobs (ADR-0008). */
   processingStartedAt: timestamp('processing_started_at', { withTimezone: true }),
   /** How many times the sweeper re-queued a stuck job; it gives up after a few. */
   processingRequeues: integer('processing_requeues').notNull().default(0),
   processedAt: timestamp('processed_at', { withTimezone: true }),
+  /** MEDIA-07 usage rights: where it came from, under what licence, until when, and whether
+   *  consent of the people shown is on file (PRD MEDIA-07). */
   source: text('source'),
   license: text('license'),
   rightsExpireAt: timestamp('rights_expire_at', { withTimezone: true }),
+  consentOnFile: boolean('consent_on_file').notNull().default(false),
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: createdAt(),
 });
