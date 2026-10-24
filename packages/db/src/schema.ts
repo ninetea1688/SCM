@@ -156,6 +156,11 @@ export const mediaAssets = pgTable('media_assets', {
   publishHeight: integer('publish_height'),
   /** Thai reason shown to the user when status = failed. */
   processingError: text('processing_error'),
+  /**
+   * MEDIA-08: set once the stored bytes of a failed asset were deleted (PDPA retention).
+   * The row stays for audit; the sweeper skips assets with this set.
+   */
+  orphanCleanedAt: timestamp('orphan_cleaned_at', { withTimezone: true }),
   /** Set when processing is (re)queued; the sweeper uses it to find stuck jobs (ADR-0008). */
   processingStartedAt: timestamp('processing_started_at', { withTimezone: true }),
   /** How many times the sweeper re-queued a stuck job; it gives up after a few. */

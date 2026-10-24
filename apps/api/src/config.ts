@@ -58,6 +58,13 @@ const Env = z.object({
   MEDIA_MAX_INFLIGHT_PER_WORKSPACE: z.coerce.number().int().positive().default(50),
   /** Sweeper: re-enqueue after this long in `processing`; give up after 4× this. */
   MEDIA_STUCK_AFTER_MIN: z.coerce.number().positive().default(15),
+  /**
+   * MEDIA-08: an upload still in `uploading` after this long is abandoned (the presigned
+   * PUT expires after UPLOAD_URL_TTL anyway) — the object and its row are deleted.
+   */
+  MEDIA_UPLOAD_ABANDON_MIN: z.coerce.number().positive().default(60),
+  /** MEDIA-08: how often the worker sweeps orphaned bytes of failed/abandoned assets. */
+  MEDIA_ORPHAN_SWEEP_SEC: z.coerce.number().positive().default(3600),
   /** MEDIA-04 / ADR-0009 publishable renditions. */
   MEDIA_PUBLISH_IMAGE_MAX_PX: z.coerce.number().int().positive().default(4096),
   MEDIA_PUBLISH_JPEG_QUALITY: z.coerce.number().int().min(1).max(100).default(90),

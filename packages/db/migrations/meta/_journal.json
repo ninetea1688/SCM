@@ -72,6 +72,13 @@
       "when": 1792777372565,
       "tag": "0009_omniscient_annihilus",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792812641288,
+      "tag": "0010_previous_nebula",
+      "breakpoints": true
     }
   ]
 }

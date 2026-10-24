@@ -13,6 +13,7 @@ import { type AppConfig, CONFIG, loadConfig } from './config';
 import { StatusWatchJob } from './health/status-watch.job';
 import { StatusWatchService } from './health/status-watch.service';
 import { MediaJobProcessor } from './media/media.processor';
+import { MediaOrphanSweeper } from './media/media-orphan-sweeper.service';
 import { MediaSweeper } from './media/media-sweeper.service';
 import { PublishProcessor } from './publishing/publish.processor';
 import { PublishingModule } from './publishing/publishing.module';
@@ -46,6 +47,7 @@ export class DataDeletionTimer implements OnModuleInit, OnModuleDestroy {
     MediaJobProcessor,
     SweeperService,
     MediaSweeper,
+    MediaOrphanSweeper,
     AccountMaintenanceJob,
     DataDeletionService,
     DataDeletionTimer,

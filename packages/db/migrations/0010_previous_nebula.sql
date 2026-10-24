@@ -1,0 +1,1 @@
+ALTER TABLE "media_assets" ADD COLUMN "orphan_cleaned_at" timestamp with time zone;
