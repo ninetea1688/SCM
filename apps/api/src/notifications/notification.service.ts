@@ -9,6 +9,7 @@ export type NotificationType =
   | 'publish_failed'
   | 'account_disconnected'
   | 'approval_requested'
+  | 'approval_reminder'
   | 'approval_decided'
   | 'token_expiring'
   | 'system_alert';

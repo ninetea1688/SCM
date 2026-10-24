@@ -25,6 +25,11 @@ export async function bootApp(): Promise<INestApplication> {
   const app = mod.createNestApplication({ rawBody: true, logger: false });
   app.setGlobalPrefix('api', { exclude: ['health', 'metrics', 'status', 'webhooks/{*path}'] });
   await app.init();
+  // Listen on an ephemeral port: supertest 7 "adopts" a non-listening server and
+  // CLOSES it when the last request of a batch settles, which would break the next
+  // test block. A pre-listening server always reports an address, so supertest never
+  // adopts (and never closes) it.
+  await app.listen(0, '127.0.0.1');
   return app;
 }
 
