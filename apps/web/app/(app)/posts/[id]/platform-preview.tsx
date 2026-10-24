@@ -7,7 +7,7 @@
  */
 import type { Platform, VariantDraft } from '@scm/domain';
 import { useEffect, useState } from 'react';
-import { bff, describeError } from '@/lib/client';
+import { bff } from '@/lib/client';
 
 interface MediaView {
   previewUrl: string | null;

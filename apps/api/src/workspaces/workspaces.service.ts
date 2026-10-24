@@ -112,6 +112,7 @@ export class WorkspacesService {
         voiceNotes?: string;
         examplePosts?: string[];
       };
+      mourningRanges?: { start: string; end: string; note?: string }[];
     },
   ) {
     return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {
@@ -141,6 +142,7 @@ export class WorkspacesService {
               },
             }
           : {}),
+        ...(patch.mourningRanges ? { mourningRanges: patch.mourningRanges } : {}),
       };
       await tx.update(workspaces).set({ settings: after }).where(eq(workspaces.id, t.workspaceId));
       await this.audit.record(tx, {

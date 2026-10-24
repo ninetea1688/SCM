@@ -115,7 +115,12 @@ function quotaWarnFor(items: BoardItem[]): BoardDay['quotaWarn'] {
   return undefined;
 }
 
-function boardDays(keys: string[], byDay: Map<string, BoardItem[]>, todayKey: string): BoardDay[] {
+function boardDays(
+  keys: string[],
+  byDay: Map<string, BoardItem[]>,
+  todayKey: string,
+  inMourning: (key: string) => boolean,
+): BoardDay[] {
   return keys.map((key) => {
     const [y, m, d] = key.split('-').map(Number);
     const holiday = thaiHolidays(y!).get(
@@ -128,6 +133,7 @@ function boardDays(keys: string[], byDay: Map<string, BoardItem[]>, todayKey: st
       isToday: key === todayKey,
       holidayName: holiday?.nameTh,
       isDayOff: holiday !== undefined && holiday.kind !== 'observance',
+      isMourning: inMourning(key),
       items,
       quotaWarn: quotaWarnFor(items),
     };
@@ -174,13 +180,24 @@ export default async function CalendarPage({
     .join('&');
   const withF = (href: string) => (f ? `${href}&${f}` : href);
   const here = withF(`/calendar?view=${view}&d=${d}`);
-  const [items, backlog] = await Promise.all([
+  const [items, backlog, current] = await Promise.all([
     load<CalItem[]>(
       `/calendar?from=${from.toISOString()}&to=${to.toISOString()}${f ? `&${f}` : ''}`,
       here,
     ),
     load<BacklogItem[]>('/backlog', here),
+    load<{
+      settings?: { mourningRanges?: { start: string; end: string; note?: string }[] };
+    }>('/workspaces/current', here),
   ]);
+  // CAL-06: mourning/significant ranges overlapping the visible window.
+  const mourning = (current.settings?.mourningRanges ?? []).filter((r) => {
+    const rs = new Date(`${r.start}T00:00:00Z`).getTime();
+    const re = new Date(`${r.end}T23:59:59Z`).getTime();
+    return re >= from.getTime() && rs <= to.getTime();
+  });
+  const inMourning = (dayKey: string) =>
+    mourning.some((r) => `${r.start}` <= dayKey && dayKey <= `${r.end}`);
 
   const byDay = new Map<string, BoardItem[]>();
   for (const it of items) {
@@ -270,6 +287,14 @@ export default async function CalendarPage({
             </Link>
           ))}
         </nav>
+
+        {mourning.length > 0 && (
+          <div role="alert" className="mb-4 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
+            ⚠ ช่วงไว้ทุกข์/เหตุการณ์สำคัญ (CAL-06):{' '}
+            {mourning.map((r) => `${r.start}–${r.end}${r.note ? ` (${r.note})` : ''}`).join(', ')} —
+            โปรดพิจารณาความเหมาะสมของคอนเทนต์ที่จะโพสต์ในช่วงนี้
+          </div>
+        )}
 
         <div className="mb-4">
           <Filters platforms={platforms} statuses={statuses} />
@@ -380,7 +405,10 @@ export default async function CalendarPage({
               )}
             </ol>
             <div className="hidden md:block">
-              <Board days={boardDays(gridKeys, byDay, todayKey)} week={view === 'week'} />
+              <Board
+                days={boardDays(gridKeys, byDay, todayKey, inMourning)}
+                week={view === 'week'}
+              />
             </div>
           </>
         )}

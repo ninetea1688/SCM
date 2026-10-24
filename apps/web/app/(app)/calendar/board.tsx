@@ -27,6 +27,8 @@ export interface BoardDay {
   isToday: boolean;
   holidayName?: string;
   isDayOff: boolean;
+  /** CAL-06: the day falls in a mourning/significant range. */
+  isMourning: boolean;
   items: BoardItem[];
   /** CAL-05: first platform at ≥80% of its daily cap on this day. */
   quotaWarn?: { platform: Platform; used: number; limit: number };
@@ -109,7 +111,7 @@ export function Board({ days, week }: { days: BoardDay[]; week: boolean }) {
             }}
             onDragLeave={() => setOverKey((k) => (k === d.key ? null : k))}
             onDrop={() => void drop(d)}
-            className={`min-h-24 space-y-1 p-1.5 transition-colors ${
+            className={`relative min-h-24 space-y-1 p-1.5 transition-colors ${
               d.isDayOff ? 'bg-danger/5' : 'bg-surface'
             } ${overKey === d.key ? 'ring-2 ring-brand ring-inset' : ''} ${
               week ? 'min-h-[28rem]' : ''
@@ -137,6 +139,22 @@ export function Board({ days, week }: { days: BoardDay[]; week: boolean }) {
               >
                 {d.holidayName}
               </p>
+            )}
+            {d.isMourning && (
+              <span
+                title="ช่วงไว้ทุกข์/เหตุการณ์สำคัญ (CAL-06) — โปรดพิจารณาความเหมาะสมของคอนเทนต์"
+                className="absolute top-0.5 right-0.5 rounded bg-danger/15 px-1 text-[10px] text-danger"
+              >
+                ไว้ทุกข์
+              </span>
+            )}
+            {d.items.length === 0 && !d.isDayOff && (
+              <span
+                title="CAL-04: ยังไม่มีคอนเทนต์ในวันนี้"
+                className="mt-1 rounded border border-dashed border-line px-1 py-0.5 text-center text-[10px] text-muted/60"
+              >
+                ว่าง
+              </span>
             )}
             {d.items.map((it) => (
               <a

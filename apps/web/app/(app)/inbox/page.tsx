@@ -31,6 +31,17 @@ interface Message {
   isAutoReply: boolean;
   status: 'sent' | 'pending' | 'rejected';
 }
+interface Profile {
+  platform: Platform;
+  accountName: string;
+  externalUserId: string;
+  status: 'open' | 'claimed' | 'closed';
+  assignee: string | null;
+  createdAt: string;
+  lastMessageAt: string;
+  stats: { firstContactAt: string; received: number; sent: number; total: number };
+  otherThreads: { id: string; accountName: string }[];
+}
 
 const STATUS_TH: Record<Conversation['status'], { label: string; cls: string }> = {
   open: { label: 'เปิด', cls: 'bg-warn/10 text-warn' },
@@ -62,6 +73,12 @@ export default async function InboxPage({
       ).catch((e) => (e instanceof ApiError && e.status === 403 ? null : Promise.reject(e)))
     : [];
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
+  const profile = selectedId
+    ? await load<Profile>(
+        `/inbox/conversations/${selectedId}/profile`,
+        `/inbox?c=${selectedId}`,
+      ).catch((e) => (e instanceof ApiError && e.status === 403 ? null : Promise.reject(e)))
+    : null;
 
   return (
     <div className="space-y-4">
@@ -132,6 +149,18 @@ export default async function InboxPage({
                   <span className="ml-auto text-xs text-muted">กำลังตอบโดย {selected.assignee}</span>
                 )}
               </header>
+              {profile && (
+                <p
+                  className="border-b border-line px-4 py-2 text-xs text-muted"
+                  title="โปรไฟล์ผู้ติดต่อ (CRM-01)"
+                >
+                  CRM: ติดต่อครั้งแรก {thTime.format(new Date(profile.stats.firstContactAt))} · รับ{' '}
+                  {profile.stats.received.toLocaleString('th-TH')} / ส่ง{' '}
+                  {profile.stats.sent.toLocaleString('th-TH')} ข้อความ
+                  {profile.otherThreads.length > 1 &&
+                    ` · พบผู้ใช้เดียวกันในอีก ${profile.otherThreads.length - 1} บัญชี`}
+                </p>
+              )}
               <ul className="flex-1 space-y-2 overflow-y-auto p-4" aria-label="ข้อความ">
                 {(messages ?? []).map((m) => {
                   if (m.status === 'pending' || m.status === 'rejected') {
