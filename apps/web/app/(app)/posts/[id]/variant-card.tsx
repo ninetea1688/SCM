@@ -8,6 +8,7 @@ import { PlatformBadge, StatusBadge } from '@/components/badges';
 import { VariantOptions as OptionsFields, type VariantOptions } from '@/components/variant-options';
 import { bff, describeError } from '@/lib/client';
 import type { VariantView } from './page';
+import { PlatformPreview } from './platform-preview';
 
 /** PUB-08: recipients/quota preview fetched for LINE variants before confirmation. */
 interface PublishPreview {
@@ -162,6 +163,23 @@ export function VariantCard({ variant: v }: { variant: VariantView }) {
         onChange={setOptions}
         disabled={!editable || busy}
       />
+
+      {v.status !== 'cancelled' && (
+        <details className="rounded-lg border border-line bg-surface p-3">
+          <summary className="cursor-pointer text-sm text-muted hover:text-ink">
+            พรีวิวหน้าตาบน {v.platform}
+          </summary>
+          <div className="mt-2">
+            <PlatformPreview
+              platform={v.platform}
+              caption={v.caption}
+              mediaIds={v.mediaIds ?? []}
+              accountName={v.accountName || 'เพจของคุณ'}
+              options={options}
+            />
+          </div>
+        </details>
+      )}
 
       {v.issues.length > 0 && (
         <ul

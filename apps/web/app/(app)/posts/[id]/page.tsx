@@ -8,7 +8,9 @@ export interface VariantView {
   id: string;
   platform: Platform;
   socialAccountId: string;
+  accountName: string;
   caption: string;
+  mediaIds: string[];
   status: VariantStatus;
   version: number;
   approvedVersion: number | null;

@@ -635,6 +635,10 @@ export class PostsService {
   }
 
   private async withIssues(tx: Tx, v: Variant) {
+    const [account] = await tx
+      .select({ name: socialAccounts.name })
+      .from(socialAccounts)
+      .where(eq(socialAccounts.id, v.socialAccountId));
     const media = await tx
       .select({
         id: mediaAssets.id,
@@ -710,7 +714,7 @@ export class PostsService {
         });
       }
     }
-    return { ...v, mediaIds: media.map((m) => m.id), issues };
+    return { ...v, mediaIds: media.map((m) => m.id), accountName: account?.name ?? '', issues };
   }
 
   private async variantForUpdate(tx: Tx, id: string): Promise<Variant> {
