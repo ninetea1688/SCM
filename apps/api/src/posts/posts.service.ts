@@ -21,6 +21,7 @@ import {
   publishJobs,
   socialAccounts,
   type Tx,
+  users,
   variantMedia,
   variantVersions,
   withTenant,
@@ -45,7 +46,7 @@ import {
   type VariantStatus,
   validateVariant,
 } from '@scm/domain';
-import { and, asc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import type { AuthUser, TenantInfo } from '../auth/auth.types';
 import { AuditService } from '../common/audit.service';
 import { APP_DB } from '../common/core.module';
@@ -632,6 +633,28 @@ export class PostsService {
       ...post,
       variants: await Promise.all(variants.map((v) => this.withIssues(tx, v))),
     };
+  }
+
+  /** POST-06: version history — newest first, with the editor's display name. */
+  async versions(t: TenantInfo, u: AuthUser, variantId: string) {
+    return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {
+      const [v] = await tx
+        .select({ id: postVariants.id })
+        .from(postVariants)
+        .where(and(eq(postVariants.id, variantId), eq(postVariants.workspaceId, t.workspaceId)));
+      if (!v) throw new NotFoundException({ code: 'variant_not_found' });
+      return tx
+        .select({
+          version: variantVersions.version,
+          snapshot: variantVersions.snapshot,
+          editedBy: users.displayName,
+          createdAt: variantVersions.createdAt,
+        })
+        .from(variantVersions)
+        .innerJoin(users, eq(users.id, variantVersions.editedBy))
+        .where(eq(variantVersions.variantId, variantId))
+        .orderBy(desc(variantVersions.version));
+    });
   }
 
   private async withIssues(tx: Tx, v: Variant) {

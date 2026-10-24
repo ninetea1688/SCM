@@ -9,6 +9,7 @@ import { VariantOptions as OptionsFields, type VariantOptions } from '@/componen
 import { bff, describeError } from '@/lib/client';
 import type { VariantView } from './page';
 import { PlatformPreview } from './platform-preview';
+import { VersionHistory } from './version-history';
 
 /** PUB-08: recipients/quota preview fetched for LINE variants before confirmation. */
 interface PublishPreview {
@@ -169,7 +170,7 @@ export function VariantCard({ variant: v }: { variant: VariantView }) {
           <summary className="cursor-pointer text-sm text-muted hover:text-ink">
             พรีวิวหน้าตาบน {v.platform}
           </summary>
-          <div className="mt-2">
+          <div className="mt-2 space-y-2">
             <PlatformPreview
               platform={v.platform}
               caption={v.caption}
@@ -177,6 +178,10 @@ export function VariantCard({ variant: v }: { variant: VariantView }) {
               accountName={v.accountName || 'เพจของคุณ'}
               options={options}
             />
+          </div>
+          <div className="mt-2 border-t border-line pt-2">
+            <p className="text-xs text-muted">ประวัติเวอร์ชัน (POST-06)</p>
+            <VersionHistory variantId={v.id} />
           </div>
         </details>
       )}

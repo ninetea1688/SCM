@@ -102,6 +102,13 @@ export class PostsController {
     return this.posts.editVariant(t, u, id, parseInput(EditVariant, b));
   }
 
+  /** POST-06: version history with snapshots for the diff viewer. */
+  @Get('variants/:id/versions')
+  @RequirePermission('report.view')
+  versions(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.posts.versions(t, u, id);
+  }
+
   @Get('variants/:id/validate')
   @RequirePermission('post.edit')
   validate(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser, @Param('id') id: string) {
