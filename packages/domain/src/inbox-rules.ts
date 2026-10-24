@@ -109,6 +109,7 @@ export const NOTIFICATION_TYPES = [
   'publish_failed',
   'account_disconnected',
   'approval_requested',
+  'approval_reminder',
   'token_expiring',
   'system_alert',
 ] as const;

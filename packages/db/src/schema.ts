@@ -488,6 +488,27 @@ export const pdpaRequests = pgTable(
   (t) => [index('pdpa_requests_ws_idx').on(t.workspaceId, t.createdAt)],
 );
 
+/**
+ * APPR-03: internal discussion on a post — visible to the workspace team only
+ * (never published anywhere). Loaded with the post for the editor/approver dialogue.
+ */
+export const postInternalComments = pgTable(
+  'post_internal_comments',
+  {
+    id: id(),
+    workspaceId: workspaceRef(),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    text: text('text').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('post_internal_comments_post_idx').on(t.postId, t.createdAt)],
+);
+
 // ── Unified Inbox (INBOX-01/02) ─────────────────────────────────────────────────────────────
 
 /** One chat thread per platform contact (LINE OA user today; Messenger/IG DM later). */
@@ -689,4 +710,5 @@ export const TENANT_TABLES = [
   'inbox_rotation',
   'post_comments',
   'post_metrics',
+  'post_internal_comments',
 ] as const;

@@ -16,6 +16,8 @@ import { MediaController } from './media/media.controller';
 import { NotificationPrefsController } from './notifications/notification-prefs.controller';
 import { PdpaController } from './pdpa/pdpa.controller';
 import { PdpaService } from './pdpa/pdpa.service';
+import { PostDiscussionController } from './posts/post-discussion.controller';
+import { PostDiscussionService } from './posts/post-discussion.service';
 import { PostsController } from './posts/posts.controller';
 import { PostsService } from './posts/posts.service';
 import { PublishingModule } from './publishing/publishing.module';
@@ -45,6 +47,7 @@ import { WorkspacesService } from './workspaces/workspaces.service';
     MediaController,
     PdpaController,
     NotificationPrefsController,
+    PostDiscussionController,
     WebhooksController,
   ],
   providers: [
@@ -54,6 +57,7 @@ import { WorkspacesService } from './workspaces/workspaces.service';
     AccountsService,
     PdpaService,
     PostsService,
+    PostDiscussionService,
   ],
 })
 export class AppModule {}

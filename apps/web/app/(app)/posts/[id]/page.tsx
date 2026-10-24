@@ -1,6 +1,7 @@
 import type { Platform, ValidationIssue, VariantDraft, VariantStatus } from '@scm/domain';
 import Link from 'next/link';
 import { load } from '@/lib/load';
+import { DiscussionSection } from './discussion';
 import { VariantCard } from './variant-card';
 
 export interface VariantView {
@@ -27,6 +28,11 @@ interface PostView {
 export default async function PostPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const post = await load<PostView>(`/posts/${id}`, `/posts/${id}`);
+  // APPR-03: internal discussion (may be forbidden for viewer-only roles).
+  const discussion = await load<{ id: string; author: string; text: string; createdAt: string }[]>(
+    `/posts/${id}/comments`,
+    `/posts/${id}`,
+  ).catch(() => null);
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
@@ -40,6 +46,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
           <VariantCard key={v.id} variant={v} />
         ))}
       </div>
+      {discussion && <DiscussionSection postId={id} initial={discussion} />}
     </div>
   );
 }

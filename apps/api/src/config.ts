@@ -106,6 +106,8 @@ const Env = z.object({
   INBOX_SLA_HOURS: z.coerce.number().positive().default(4),
   /** INBOX-03: auto-assign new conversations round-robin; false leaves them เปิด for pickup. */
   INBOX_AUTO_ASSIGN: z.stringbool().default(true),
+  /** APPR-04: remind approvers when a variant sits in review this long. */
+  APPROVAL_REMIND_HOURS: z.coerce.number().positive().default(24),
   /** NOTI-01: internal LINE OA for staff alerts (separate from the customer OA). */
   LINE_NOTIFY_CHANNEL_TOKEN: z.string().default(''),
   LINE_NOTIFY_GROUP_ID: z.string().default(''),

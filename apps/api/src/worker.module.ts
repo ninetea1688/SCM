@@ -18,6 +18,7 @@ import { InboxSlaJob } from './inbox/inbox-sla.job';
 import { MediaJobProcessor } from './media/media.processor';
 import { MediaOrphanSweeper } from './media/media-orphan-sweeper.service';
 import { MediaSweeper } from './media/media-sweeper.service';
+import { ApprovalReminderJob } from './posts/post-discussion.service';
 import { PublishProcessor } from './publishing/publish.processor';
 import { PublishingModule } from './publishing/publishing.module';
 import { SweeperService } from './publishing/sweeper.service';
@@ -64,6 +65,7 @@ export class DataDeletionTimer implements OnModuleInit, OnModuleDestroy {
     StatusWatchJob,
     AnalyticsCollectorJob,
     InboxSlaJob,
+    ApprovalReminderJob,
   ],
 })
 export class WorkerModule {}
