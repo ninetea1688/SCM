@@ -66,6 +66,9 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | BRAND-01/02 Brand kit + voice (P2, done early) | ✅ | settings.brand (signature, defaultHashtags, tone, voiceNotes, examplePosts) owner-editable in /settings; composer shows แทรกลายเซ็น/#hashtag chips; voice fields ready as AI context for AIC-* (`workspaces.e2e.test.ts`) |
 | POST-03 Per-platform preview (P2, done early) | ✅ | variant card 'พรีวิวหน้าตาบน <platform>' — styled FB feed / IG square / LINE bubble / YouTube card mocks using the media preview rendition; purely client-side, honest approximation |
 | POST-07 Forbidden words + Thai proof (words part) | ✅ words | workspace forbidden list (MOD-02) blocks submit with 'forbidden_word' Thai issue (`publishing.e2e.test.ts`); Thai spell-check and ad-category rules remain (need a dictionary/rule source) |
+| CRM-01 Contact profile + history (P2, done early) | ✅ | GET /inbox/conversations/:id/profile — identity, first-contact date, received/sent/total counts (notes excluded), same-contact threads across accounts; CRM line in the chat desk header (`engage.e2e.test.ts`) |
+| CAL-04 Content gap (P2, done early) | ✅ | month-board empty non-holiday cells show a ว่าง chip |
+| CAL-06 Mourning/event ranges (P2, done early) | ✅ | settings.mourningRanges (owner PATCH, audited) — amber banner listing overlapping ranges + ไว้ทุกข์ markers on board cells for a content-appropriateness review |
 | OPS-07 Platform changelog process | 🟡 | `platform-researcher` agent + `/verify-platform-limits` skill |
 | ANA-03 Event log | ✅ | ADR-0007 |
 | INT-04 Meta data-deletion callback | ✅ | callback verified + recorded; worker job deletes matching inbound events and closes the request (`pdpa.e2e.test.ts`) |
