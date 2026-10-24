@@ -45,6 +45,14 @@ export interface QuotaInfo {
   resetsAt?: Date;
 }
 
+/** ANA-02 central metric names — every platform's native numbers map onto these. */
+export interface CentralMetrics {
+  reach: number;
+  likes: number;
+  comments: number;
+  shares: number;
+}
+
 /** Raw request/response captured for Publish Log; adapters must pass it through `redact()`. */
 export interface AttemptTrace {
   request?: unknown;
@@ -81,4 +89,21 @@ export interface PublisherAdapter {
    * don't have it and the preview just shows the quota.
    */
   followerCount?(account: AccountCredentials, yyyymmdd: string): Promise<number | null>;
+
+  /** INBOX-01: send one direct message to a contact (LINE push; Messenger send API later). */
+  sendMessage?(
+    account: AccountCredentials,
+    externalUserId: string,
+    text: string,
+  ): Promise<{ externalId: string | null }>;
+
+  /** INBOX-01: reply publicly under a comment on our published post. */
+  replyToComment?(
+    account: AccountCredentials,
+    externalCommentId: string,
+    text: string,
+  ): Promise<{ externalId: string | null }>;
+
+  /** ANA-01/02: central engagement metrics for one published post; null when unavailable. */
+  getInsights?(account: AccountCredentials, externalPostId: string): Promise<CentralMetrics | null>;
 }

@@ -11,6 +11,7 @@ import { pinoParams } from './common/logging';
 import { loadConfig } from './config';
 import { HealthController } from './health/health.controller';
 import { OpsController } from './health/ops.controller';
+import { EngageModule } from './inbox/engage.module';
 import { MediaController } from './media/media.controller';
 import { PdpaController } from './pdpa/pdpa.controller';
 import { PdpaService } from './pdpa/pdpa.service';
@@ -31,6 +32,7 @@ import { WorkspacesService } from './workspaces/workspaces.service';
     AuthModule,
     bullRoot,
     PublishingModule,
+    EngageModule,
   ],
   controllers: [
     HealthController,

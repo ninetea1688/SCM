@@ -12,6 +12,8 @@ import { pinoParams } from './common/logging';
 import { type AppConfig, CONFIG, loadConfig } from './config';
 import { StatusWatchJob } from './health/status-watch.job';
 import { StatusWatchService } from './health/status-watch.service';
+import { AnalyticsCollectorJob } from './inbox/analytics-collector.job';
+import { EngageModule } from './inbox/engage.module';
 import { MediaJobProcessor } from './media/media.processor';
 import { MediaOrphanSweeper } from './media/media-orphan-sweeper.service';
 import { MediaSweeper } from './media/media-sweeper.service';
@@ -41,7 +43,13 @@ export class DataDeletionTimer implements OnModuleInit, OnModuleDestroy {
 
 /** Worker process: queue consumers and periodic system jobs. No HTTP routes. */
 @Module({
-  imports: [LoggerModule.forRoot(pinoParams(loadConfig())), CoreModule, bullRoot, PublishingModule],
+  imports: [
+    LoggerModule.forRoot(pinoParams(loadConfig())),
+    CoreModule,
+    bullRoot,
+    PublishingModule,
+    EngageModule,
+  ],
   providers: [
     PublishProcessor,
     MediaJobProcessor,
@@ -53,6 +61,7 @@ export class DataDeletionTimer implements OnModuleInit, OnModuleDestroy {
     DataDeletionTimer,
     StatusWatchService,
     StatusWatchJob,
+    AnalyticsCollectorJob,
   ],
 })
 export class WorkerModule {}

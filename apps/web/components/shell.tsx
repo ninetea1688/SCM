@@ -20,6 +20,21 @@ const NAV = [
   { href: '/posts/new', label: 'สร้างโพสต์', icon: 'M12 5v14M5 12h14' },
   { href: '/media', label: 'คลังสื่อ', icon: 'M4 6h10M4 12h16M4 18h7M17 15l4 3-4 3' },
   {
+    href: '/inbox',
+    label: 'ตอบแชท',
+    icon: 'M8 10h8M8 14h4M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12Z',
+  },
+  {
+    href: '/comments',
+    label: 'คอมเมนต์',
+    icon: 'M7 8h10M7 12h6M21 12c0 4.4-4 8-9 8a10 10 0 0 1-2.9-.4L3 21l1.6-4.4A7.4 7.4 0 0 1 3 12c0-4.4 4-8 9-8s9 3.6 9 8Z',
+  },
+  {
+    href: '/analytics',
+    label: 'วิเคราะห์',
+    icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+  },
+  {
     href: '/accounts',
     label: 'บัญชีโซเชียล',
     icon: 'M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7',

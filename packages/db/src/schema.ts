@@ -488,6 +488,117 @@ export const pdpaRequests = pgTable(
   (t) => [index('pdpa_requests_ws_idx').on(t.workspaceId, t.createdAt)],
 );
 
+// ── Unified Inbox (INBOX-01/02) ─────────────────────────────────────────────────────────────
+
+/** One chat thread per platform contact (LINE OA user today; Messenger/IG DM later). */
+export const conversations = pgTable(
+  'conversations',
+  {
+    id: id(),
+    workspaceId: workspaceRef(),
+    socialAccountId: uuid('social_account_id')
+      .notNull()
+      .references(() => socialAccounts.id, { onDelete: 'cascade' }),
+    platform: text('platform').notNull(),
+    externalUserId: text('external_user_id').notNull(),
+    externalUserName: text('external_user_name'),
+    /** INBOX-02: เปิด / รับเรื่องแล้ว / ปิด. */
+    status: text('status', { enum: ['open', 'claimed', 'closed'] })
+      .notNull()
+      .default('open'),
+    assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }).notNull().defaultNow(),
+    lastMessagePreview: text('last_message_preview'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('conversations_contact_uq').on(t.socialAccountId, t.externalUserId),
+    index('conversations_ws_idx').on(t.workspaceId, t.lastMessageAt),
+  ],
+);
+
+export const inboxMessages = pgTable(
+  'inbox_messages',
+  {
+    id: id(),
+    workspaceId: workspaceRef(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    direction: text('direction', { enum: ['in', 'out'] }).notNull(),
+    senderName: text('sender_name'),
+    text: text('text').notNull(),
+    /** Platform message id (LINE messageId) for redelivery dedupe; null for local drafts. */
+    externalId: text('external_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('inbox_messages_ext_uq').on(t.conversationId, t.externalId),
+    index('inbox_messages_conv_idx').on(t.conversationId, t.createdAt),
+  ],
+);
+
+/** Comments on our published posts (INBOX-01: FB/IG feed via webhook; linked through publish_jobs). */
+export const postComments = pgTable(
+  'post_comments',
+  {
+    id: id(),
+    workspaceId: workspaceRef(),
+    socialAccountId: uuid('social_account_id')
+      .notNull()
+      .references(() => socialAccounts.id, { onDelete: 'cascade' }),
+    platform: text('platform').notNull(),
+    /** Our post when the platform post matches one we published; null for unknown posts. */
+    postId: uuid('post_id').references(() => posts.id, { onDelete: 'set null' }),
+    externalPostId: text('external_post_id'),
+    externalCommentId: text('external_comment_id').notNull(),
+    parentExternalCommentId: text('parent_external_comment_id'),
+    authorName: text('author_name'),
+    text: text('text').notNull(),
+    /** MOD-01/03 lite: replied / hidden (spam/negative) / open for the team. */
+    status: text('status', { enum: ['open', 'replied', 'hidden'] })
+      .notNull()
+      .default('open'),
+    replyText: text('reply_text'),
+    repliedAt: timestamp('replied_at', { withTimezone: true }),
+    repliedBy: uuid('replied_by').references(() => users.id, { onDelete: 'set null' }),
+    hiddenReason: text('hidden_reason'),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('post_comments_ext_uq').on(t.socialAccountId, t.externalCommentId),
+    index('post_comments_ws_idx').on(t.workspaceId, t.receivedAt),
+    index('post_comments_post_idx').on(t.postId),
+  ],
+);
+
+/**
+ * ANA-01: engagement snapshots per published post — append-only (never overwrite), so
+ * trends survive metric-definition changes (ANA-02 maps them to the central names).
+ */
+export const postMetrics = pgTable(
+  'post_metrics',
+  {
+    id: id(),
+    workspaceId: workspaceRef(),
+    socialAccountId: uuid('social_account_id')
+      .notNull()
+      .references(() => socialAccounts.id, { onDelete: 'cascade' }),
+    platform: text('platform').notNull(),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    externalPostId: text('external_post_id'),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+    reach: integer('reach').notNull().default(0),
+    likes: integer('likes').notNull().default(0),
+    comments: integer('comments').notNull().default(0),
+    shares: integer('shares').notNull().default(0),
+  },
+  (t) => [index('post_metrics_post_idx').on(t.postId, t.capturedAt)],
+);
+
 /** Tables protected by the tenant RLS policy. Keep in sync with the RLS migration. */
 export const TENANT_TABLES = [
   'workspaces',
@@ -508,4 +619,8 @@ export const TENANT_TABLES = [
   'notifications',
   'inbound_events',
   'pdpa_requests',
+  'conversations',
+  'inbox_messages',
+  'post_comments',
+  'post_metrics',
 ] as const;

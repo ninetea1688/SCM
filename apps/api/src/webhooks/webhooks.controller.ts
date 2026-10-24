@@ -29,11 +29,22 @@ import { APP_DB, SYSTEM_DB } from '../common/core.module';
 import { randomToken, TokenCipher } from '../common/crypto';
 import { parseInput } from '../common/zod';
 import { type AppConfig, CONFIG } from '../config';
-import { parseMetaSignedRequest, verifyLineSignature } from './signatures';
+import { CommentsService, type MetaFeedChange } from '../inbox/comments.service';
+import { InboxService, type LineInboxEvent } from '../inbox/inbox.service';
+import {
+  parseMetaSignedRequest,
+  verifyLineSignature,
+  verifyMetaWebhookSignature,
+} from './signatures';
 
 interface LineEvent {
   type: string;
   webhookEventId?: string;
+}
+
+interface MetaWebhookBody {
+  object?: string;
+  entry?: { changes?: MetaFeedChange[] }[];
 }
 
 @Public()
@@ -44,6 +55,8 @@ export class WebhooksController {
     @Inject(SYSTEM_DB) private readonly system: Db,
     @Inject(CONFIG) private readonly cfg: AppConfig,
     private readonly cipher: TokenCipher,
+    private readonly inbox: InboxService,
+    private readonly comments: CommentsService,
   ) {}
 
   @Post('line/:accountId')
@@ -86,6 +99,61 @@ export class WebhooksController {
           )
           .onConflictDoNothing(), // LINE redelivers; webhookEventId dedupes.
     );
+    // INBOX-01: chat messages land on the desk immediately (raw store stays for P4 distillation).
+    await this.inbox.upsertFromLine(account, events as LineInboxEvent[]).catch(() => undefined);
+    return { ok: true };
+  }
+
+  /**
+   * INBOX-01: Meta feed events (comments on our Page/IG posts) for one subscribed account.
+   * Verified with X-Hub-Signature-256; sandbox accounts may deliver unsigned (dev only).
+   */
+  @Post('meta/feed/:accountId')
+  @HttpCode(200)
+  async metaFeed(
+    @Param('accountId') accountId: string,
+    @Headers('x-hub-signature-256') signature: string | undefined,
+    @Req() req: RawBodyRequest<Request>,
+  ) {
+    const [account] = await this.system
+      .select()
+      .from(socialAccounts)
+      .where(eq(socialAccounts.id, accountId));
+    if (!account || account.platform === 'line') throw new NotFoundException();
+    const sandbox = (account.scopes ?? []).includes('sandbox');
+    const secret = this.cfg.META_APP_SECRET;
+    if (!sandbox) {
+      if (!req.rawBody || !verifyMetaWebhookSignature(req.rawBody, signature, secret)) {
+        throw new UnauthorizedException({ code: 'bad_signature' });
+      }
+    } else if (
+      secret &&
+      req.rawBody &&
+      !verifyMetaWebhookSignature(req.rawBody, signature, secret)
+    ) {
+      // A sandbox account with a configured app still rejects broken signatures.
+      throw new UnauthorizedException({ code: 'bad_signature' });
+    }
+    const body = JSON.parse(req.rawBody?.toString('utf8') ?? '{}') as MetaWebhookBody;
+    const changes = (body.entry ?? []).flatMap((e) => e.changes ?? []);
+    if (changes.length === 0) return { ok: true };
+
+    await withTenant(this.db, { workspaceId: account.workspaceId }, (tx) =>
+      tx
+        .insert(inboundEvents)
+        .values(
+          changes.map((c) => ({
+            workspaceId: account.workspaceId,
+            socialAccountId: account.id,
+            platform: account.platform,
+            eventType: `${c.field}:${c.value.item ?? 'unknown'}`,
+            externalEventId: c.value.comment_id ?? null,
+            payload: c,
+          })),
+        )
+        .onConflictDoNothing(),
+    );
+    await this.comments.upsertFromMeta(account, changes).catch(() => undefined);
     return { ok: true };
   }
 

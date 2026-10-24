@@ -86,6 +86,13 @@
       "when": 1792820558784,
       "tag": "0011_mighty_glorian",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792821559146,
+      "tag": "0012_foamy_felicia_hardy",
+      "breakpoints": true
     }
   ]
 }

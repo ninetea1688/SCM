@@ -8,6 +8,7 @@
 import {
   type AdapterResult,
   type AttemptOutcome,
+  type CentralMetrics,
   type MediaFacts,
   type Platform,
   type PreparedHandle,
@@ -23,6 +24,8 @@ export class FakeAdapter implements PublisherAdapter {
     string,
     { id: string; caption: string; count: number; media: { mimeType: string; url: string }[] }
   >();
+  /** INBOX-01 sandbox outbox (messages and comment replies) for tests to assert on. */
+  readonly sent: { kind: 'dm' | 'comment'; to: string; text: string }[] = [];
   private readonly failedOnce = new Set<string>();
 
   constructor(readonly platform: Platform) {}
@@ -95,5 +98,41 @@ export class FakeAdapter implements PublisherAdapter {
 
   async getQuota(): Promise<QuotaInfo[]> {
     return [];
+  }
+
+  async sendMessage(
+    _account: { socialAccountId: string },
+    externalUserId: string,
+    text: string,
+  ): Promise<{ externalId: string | null }> {
+    this.sent.push({ kind: 'dm', to: externalUserId, text });
+    return { externalId: `fake_dm_${this.sent.length}` };
+  }
+
+  async replyToComment(
+    _account: { socialAccountId: string },
+    externalCommentId: string,
+    text: string,
+  ): Promise<{ externalId: string | null }> {
+    this.sent.push({ kind: 'comment', to: externalCommentId, text });
+    return { externalId: `fake_reply_${this.sent.length}` };
+  }
+
+  /**
+   * Deterministic sandbox engagement: stable per post (same numbers on every call) but
+   * different across posts, so the analytics page has something meaningful to show.
+   */
+  async getInsights(
+    _account: { socialAccountId: string },
+    externalPostId: string,
+  ): Promise<CentralMetrics> {
+    let h = 0;
+    for (const c of externalPostId) h = (h * 31 + c.charCodeAt(0)) % 100_000;
+    return {
+      reach: 200 + (h % 1800),
+      likes: 10 + (h % 120),
+      comments: (h % 17) + 1,
+      shares: h % 23,
+    };
   }
 }

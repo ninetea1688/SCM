@@ -7,6 +7,20 @@ export function verifyLineSignature(rawBody: Buffer, signature: string, channelS
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
+/** Meta webhook delivery (`X-Hub-Signature-256: sha256=<hex of HMAC-SHA256(appSecret, body)>`). */
+export function verifyMetaWebhookSignature(
+  rawBody: Buffer,
+  header: string | undefined,
+  appSecret: string,
+): boolean {
+  if (!appSecret || !header?.startsWith('sha256=')) return false;
+  const expected = createHmac('sha256', appSecret).update(rawBody).digest('hex');
+  const given = header.slice(7);
+  return (
+    given.length === expected.length && timingSafeEqual(Buffer.from(given), Buffer.from(expected))
+  );
+}
+
 /**
  * Meta `signed_request` = "<base64url sig>.<base64url payload>", sig = HMAC-SHA256(appSecret,
  * payload part). Returns the decoded payload or null when the signature is wrong.

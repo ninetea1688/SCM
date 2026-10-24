@@ -135,6 +135,26 @@ export class FacebookAdapter implements PublisherAdapter {
     return hit ? { kind: 'success', externalPostId: hit.id, permalink: hit.permalink_url } : null;
   }
 
+  /** INBOX-01: reply publicly under a Page-post comment (Graph /{comment-id}/comments). */
+  async replyToComment(
+    account: AccountCredentials,
+    externalCommentId: string,
+    text: string,
+  ): Promise<{ externalId: string | null }> {
+    const r = await httpCall(
+      {
+        method: 'POST',
+        url: this.url(`${externalCommentId}/comments`),
+        headers: { authorization: `Bearer ${account.accessToken}` },
+        body: { message: text },
+        isWrite: true,
+      },
+      this.fetchFn,
+    );
+    if (r.status !== 200) return { externalId: null };
+    return { externalId: String((r.json as { id?: string }).id ?? '') || null };
+  }
+
   async getQuota(_account: AccountCredentials): Promise<QuotaInfo[]> {
     // Feed posts have no published cap; Reels cap is tracked in our own quota_usage.
     return [];

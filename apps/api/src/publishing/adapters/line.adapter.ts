@@ -104,6 +104,29 @@ export class LineAdapter implements PublisherAdapter {
     return j.status === 'ready' ? (j.targetedReaches ?? null) : null;
   }
 
+  /** INBOX-01: answer one contact directly (push; the webhook reply token is long gone by then). */
+  async sendMessage(
+    account: AccountCredentials,
+    externalUserId: string,
+    text: string,
+  ): Promise<{ externalId: string | null }> {
+    const r = await httpCall(
+      {
+        method: 'POST',
+        url: `${API}/message/push`,
+        headers: {
+          authorization: `Bearer ${account.accessToken}`,
+          'content-type': 'application/json',
+        },
+        body: { to: externalUserId, messages: [{ type: 'text', text }] },
+        isWrite: true,
+      },
+      this.fetchFn,
+    );
+    if (r.status !== 200) return { externalId: null }; // the service records the send attempt anyway
+    return { externalId: r.headers.get('x-line-request-id') };
+  }
+
   private errorOutcome(status: number, json: unknown, headers: Headers): AttemptOutcome {
     const message = (json as { message?: string })?.message ?? `HTTP ${status}`;
     const errorCode = `line_${status}`;
