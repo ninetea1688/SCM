@@ -14,6 +14,7 @@ import { StatusWatchJob } from './health/status-watch.job';
 import { StatusWatchService } from './health/status-watch.service';
 import { AnalyticsCollectorJob } from './inbox/analytics-collector.job';
 import { EngageModule } from './inbox/engage.module';
+import { InboxSlaJob } from './inbox/inbox-sla.job';
 import { MediaJobProcessor } from './media/media.processor';
 import { MediaOrphanSweeper } from './media/media-orphan-sweeper.service';
 import { MediaSweeper } from './media/media-sweeper.service';
@@ -62,6 +63,7 @@ export class DataDeletionTimer implements OnModuleInit, OnModuleDestroy {
     StatusWatchService,
     StatusWatchJob,
     AnalyticsCollectorJob,
+    InboxSlaJob,
   ],
 })
 export class WorkerModule {}

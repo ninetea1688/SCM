@@ -1,11 +1,13 @@
-/** INBOX-01/02: the chat desk and the comment desk, both per post × platform (PRD §6.10). */
+/** INBOX-01..06: chat desk, comment desk, saved replies, analytics — per post × platform. */
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -23,6 +25,7 @@ import { TenantGuard } from '../tenancy/tenant.guard';
 import { AnalyticsService } from './analytics.service';
 import { CommentsService } from './comments.service';
 import { InboxService } from './inbox.service';
+import { SavedRepliesService, SavedReplyInput } from './saved-replies.service';
 
 const Reply = z.object({ text: z.string().min(1).max(5000) });
 const Status = z.object({ status: z.enum(['open', 'claimed', 'closed']) });
@@ -40,6 +43,7 @@ export class EngageController {
     private readonly inbox: InboxService,
     private readonly commentDesk: CommentsService,
     private readonly metrics: AnalyticsService,
+    private readonly saved: SavedRepliesService,
   ) {}
 
   @Get('inbox/conversations')
@@ -81,6 +85,56 @@ export class EngageController {
     @Body() b: unknown,
   ) {
     return this.inbox.setStatus(t, u, id, parseInput(Status, b).status);
+  }
+
+  /** INBOX-06: internal note — stored on the thread, never sent to the customer. */
+  @Post('inbox/conversations/:id/note')
+  @HttpCode(200)
+  @RequirePermission('inbox.reply')
+  addNote(
+    @Tenant() t: TenantInfo,
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() b: unknown,
+  ) {
+    return this.inbox.addNote(t, u, id, parseInput(Reply, b).text);
+  }
+
+  /** INBOX-05: standard answers for the reply composer. */
+  @Get('saved-replies')
+  @RequirePermission('inbox.reply')
+  savedReplies(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser) {
+    return this.saved.list(t, u);
+  }
+
+  @Post('saved-replies')
+  @HttpCode(200)
+  @RequirePermission('inbox.reply')
+  createSavedReply(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser, @Body() b: unknown) {
+    return this.saved.create(t, u, parseInput(SavedReplyInput, b));
+  }
+
+  @Patch('saved-replies/:id')
+  @HttpCode(200)
+  @RequirePermission('inbox.reply')
+  updateSavedReply(
+    @Tenant() t: TenantInfo,
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() b: unknown,
+  ) {
+    return this.saved.update(t, u, id, parseInput(SavedReplyInput, b));
+  }
+
+  @Delete('saved-replies/:id')
+  @HttpCode(200)
+  @RequirePermission('inbox.reply')
+  deleteSavedReply(
+    @Tenant() t: TenantInfo,
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.saved.remove(t, u, id);
   }
 
   @Get('comments')

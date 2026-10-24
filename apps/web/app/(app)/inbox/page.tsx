@@ -15,6 +15,8 @@ interface Conversation {
   externalUserName: string | null;
   status: 'open' | 'claimed' | 'closed';
   assignee: string | null;
+  slaDueAt: string | null;
+  slaEscalatedAt: string | null;
   lastMessageAt: string;
   lastMessagePreview: string | null;
 }
@@ -24,6 +26,7 @@ interface Message {
   senderName: string | null;
   text: string;
   createdAt: string;
+  isInternalNote: boolean;
 }
 
 const STATUS_TH: Record<Conversation['status'], { label: string; cls: string }> = {
@@ -98,6 +101,15 @@ export default async function InboxPage({
                     <span>{c.accountName}</span>
                     <span>{thTime.format(new Date(c.lastMessageAt))}</span>
                   </span>
+                  {c.slaDueAt && c.status !== 'closed' && (
+                    <span
+                      className={`mt-1 block text-[11px] ${c.slaEscalatedAt ? 'text-danger' : 'text-warn'}`}
+                    >
+                      {c.slaEscalatedAt
+                        ? '⚠ เกิน SLA — รอการตอบ'
+                        : `ตอบภายใน ${thTime.format(new Date(c.slaDueAt))}`}
+                    </span>
+                  )}
                 </Link>
               </li>
             ))}
@@ -118,19 +130,34 @@ export default async function InboxPage({
                 )}
               </header>
               <ul className="flex-1 space-y-2 overflow-y-auto p-4" aria-label="ข้อความ">
-                {(messages ?? []).map((m) => (
-                  <li
-                    key={m.id}
-                    className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
-                      m.direction === 'in' ? 'bg-line text-ink' : 'ml-auto bg-brand text-brand-ink'
-                    }`}
-                  >
-                    {m.text}
-                    <span className="mt-0.5 block text-[10px] opacity-70">
-                      {thTime.format(new Date(m.createdAt))}
-                    </span>
-                  </li>
-                ))}
+                {(messages ?? []).map((m) =>
+                  m.isInternalNote ? (
+                    <li
+                      key={m.id}
+                      className="mx-auto max-w-[90%] rounded-lg border border-dashed border-warn bg-warn/5 px-3 py-1.5 text-xs text-ink"
+                    >
+                      <span className="font-medium text-warn">โน้ตภายใน · {m.senderName}</span>
+                      <span className="ml-2">{m.text}</span>
+                      <span className="ml-2 opacity-60">
+                        {thTime.format(new Date(m.createdAt))}
+                      </span>
+                    </li>
+                  ) : (
+                    <li
+                      key={m.id}
+                      className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
+                        m.direction === 'in'
+                          ? 'bg-line text-ink'
+                          : 'ml-auto bg-brand text-brand-ink'
+                      }`}
+                    >
+                      {m.text}
+                      <span className="mt-0.5 block text-[10px] opacity-70">
+                        {thTime.format(new Date(m.createdAt))}
+                      </span>
+                    </li>
+                  ),
+                )}
                 {(messages ?? []).length === 0 && (
                   <li className="text-center text-sm text-muted">ยังไม่มีข้อความในบทสนทนานี้</li>
                 )}

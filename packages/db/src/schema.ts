@@ -507,6 +507,10 @@ export const conversations = pgTable(
       .notNull()
       .default('open'),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+    /** INBOX-04: reply due by (set on open/new inbound message); null = answered, nothing owed. */
+    slaDueAt: timestamp('sla_due_at', { withTimezone: true }),
+    /** INBOX-04: set once the overdue escalation fired so it never repeats for one breach. */
+    slaEscalatedAt: timestamp('sla_escalated_at', { withTimezone: true }),
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }).notNull().defaultNow(),
     lastMessagePreview: text('last_message_preview'),
     createdAt: createdAt(),
@@ -528,6 +532,8 @@ export const inboxMessages = pgTable(
     direction: text('direction', { enum: ['in', 'out'] }).notNull(),
     senderName: text('sender_name'),
     text: text('text').notNull(),
+    /** INBOX-06: internal notes are invisible to the customer (never sent to the platform). */
+    isInternalNote: boolean('is_internal_note').notNull().default(false),
     /** Platform message id (LINE messageId) for redelivery dedupe; null for local drafts. */
     externalId: text('external_id'),
     createdAt: createdAt(),
@@ -537,6 +543,32 @@ export const inboxMessages = pgTable(
     index('inbox_messages_conv_idx').on(t.conversationId, t.createdAt),
   ],
 );
+
+/** INBOX-05: approved standard answers, reused from the composer with one click. */
+export const savedReplies = pgTable(
+  'saved_replies',
+  {
+    id: id(),
+    workspaceId: workspaceRef(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    /** INBOX-05: drawn from the approved Q&A store when CRM lands; free-form for now. */
+    shortcut: text('shortcut'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('saved_replies_shortcut_uq').on(t.workspaceId, t.shortcut),
+    index('saved_replies_ws_idx').on(t.workspaceId, t.createdAt),
+  ],
+);
+
+/** INBOX-03: round-robin cursor per workspace (one row; the counter is not tenant data). */
+export const inboxRotation = pgTable('inbox_rotation', {
+  workspaceId: workspaceRef().primaryKey(),
+  cursor: integer('cursor').notNull().default(0),
+});
 
 /** Comments on our published posts (INBOX-01: FB/IG feed via webhook; linked through publish_jobs). */
 export const postComments = pgTable(
@@ -621,6 +653,8 @@ export const TENANT_TABLES = [
   'pdpa_requests',
   'conversations',
   'inbox_messages',
+  'saved_replies',
+  'inbox_rotation',
   'post_comments',
   'post_metrics',
 ] as const;

@@ -102,6 +102,10 @@ const Env = z.object({
   STATUS_QUEUE_BACKLOG_ALERT: z.coerce.number().int().nonnegative().default(50),
   /** ANA-01: engagement snapshot cadence for published posts. */
   ANA_SNAPSHOT_INTERVAL_SEC: z.coerce.number().positive().default(3600),
+  /** INBOX-04: reply due within this many working hours of an unanswered inbound message. */
+  INBOX_SLA_HOURS: z.coerce.number().positive().default(4),
+  /** INBOX-03: auto-assign new conversations round-robin; false leaves them เปิด for pickup. */
+  INBOX_AUTO_ASSIGN: z.stringbool().default(true),
   /** NOTI-01: internal LINE OA for staff alerts (separate from the customer OA). */
   LINE_NOTIFY_CHANNEL_TOKEN: z.string().default(''),
   LINE_NOTIFY_GROUP_ID: z.string().default(''),

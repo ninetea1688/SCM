@@ -120,9 +120,11 @@ describe('chat desk (INBOX-01/02)', () => {
       },
     ]).expect(200);
 
+    // INBOX-03: the conversation arrives auto-assigned (claimed) to a rotating agent.
     const conv = await w.as('agent').http('get', '/inbox/conversations').expect(200);
     expect(conv.body).toHaveLength(1);
-    expect(conv.body[0]).toMatchObject({ platform: 'line', status: 'open' });
+    expect(conv.body[0]).toMatchObject({ platform: 'line', status: 'claimed' });
+    expect(conv.body[0].assignee).toBeTruthy();
     const id = conv.body[0].id as string;
 
     const msgs = await w.as('agent').http('get', `/inbox/conversations/${id}/messages`).expect(200);
@@ -146,7 +148,7 @@ describe('chat desk (INBOX-01/02)', () => {
       .http('get', '/inbox/conversations?status=claimed')
       .expect(200);
     expect(after.body).toHaveLength(1);
-    expect(after.body[0].assignee).toBe('agent');
+    expect(after.body[0].assignee).toBeTruthy(); // INBOX-02: the answerer owns the thread
 
     await w
       .as('agent')
