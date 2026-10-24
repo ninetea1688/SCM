@@ -1,6 +1,6 @@
 /** The sandbox-adapter guard: prod must not boot with PUBLISHER_MODE=fake unless staging opts in. */
 import { describe, expect, it } from 'vitest';
-import type { AppConfig } from '../config';
+import type { AppConfig } from '../../config';
 import { AdapterRegistry } from './registry';
 
 const base = {
