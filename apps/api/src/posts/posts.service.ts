@@ -15,6 +15,7 @@ import {
   approvals,
   type Db,
   mediaAssets,
+  memberships,
   posts,
   postVariants,
   publishJobs,
@@ -48,6 +49,7 @@ import type { AuthUser, TenantInfo } from '../auth/auth.types';
 import { AuditService } from '../common/audit.service';
 import { APP_DB } from '../common/core.module';
 import { type AppConfig, CONFIG } from '../config';
+import { NotificationService } from '../notifications/notification.service';
 import { PublishQueue } from '../publishing/queue';
 
 export interface VariantInput {
@@ -75,6 +77,7 @@ export class PostsService {
     @Inject(APP_DB) private readonly db: Db,
     private readonly audit: AuditService,
     private readonly queue: PublishQueue,
+    private readonly notifications: NotificationService,
     @Inject(CONFIG) private readonly cfg: AppConfig,
   ) {}
 
@@ -390,6 +393,36 @@ export class PostsService {
           policyException: r.value.policyExceptionUsed || undefined,
         },
       });
+      if (event === 'submit') {
+        // NOTI-02: ping the approvers (owner/admin/approver) — never the submitter.
+        const approvers = await tx
+          .select({ userId: memberships.userId })
+          .from(memberships)
+          .where(
+            and(
+              eq(memberships.workspaceId, t.workspaceId),
+              inArray(memberships.role, ['owner', 'admin', 'approver']),
+              sql`${memberships.userId} <> ${u.userId}`,
+            ),
+          );
+        if (approvers.length) {
+          const [p] = await tx
+            .select({ title: posts.title })
+            .from(posts)
+            .where(eq(posts.id, v.postId));
+          afterCommit.push(
+            await this.notifications.notify(tx, {
+              workspaceId: t.workspaceId,
+              userIds: approvers.map((m) => m.userId),
+              type: 'approval_requested',
+              title: `รอการอนุมัติ: ${p!.title}`,
+              body: `เวอร์ชัน ${v.version} ถูกส่งตรวจแล้ว`,
+              link: `/posts/${v.postId}`,
+              email: true,
+            }),
+          );
+        }
+      }
       return { status: r.value.to, issues, quota };
     });
     for (const fn of afterCommit) await fn();

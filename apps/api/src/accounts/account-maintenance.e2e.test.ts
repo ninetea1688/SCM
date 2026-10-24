@@ -5,7 +5,7 @@
  */
 import type { INestApplication } from '@nestjs/common';
 import { createDb, createPool, notifications, publishJobs, socialAccounts } from '@scm/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { TokenCipher } from '../common/crypto';
 import { loadConfig } from '../config';
@@ -151,5 +151,43 @@ describe('CONN-06 live quota endpoint', () => {
       .http('post', '/accounts/sandbox')
       .send({ platform: 'facebook', name: 'เพจทดสอบสุขภาพ' })
       .expect(201); // restore for later suites
+  });
+});
+
+describe('NOTI-02 expiring-token warn', () => {
+  it('a token inside the warn window alerts owners/admins once per day; a distant one stays quiet', async () => {
+    await asLiveAccount();
+    const link = `/accounts#${accountId}`;
+    const warnRows = async () =>
+      (
+        await ownerDb
+          .select()
+          .from(notifications)
+          .where(and(eq(notifications.type, 'token_expiring'), eq(notifications.link, link)))
+      ).filter((n) => n.workspaceId === w.workspaceId);
+
+    // Far from expiry → no alert.
+    await ownerDb
+      .update(socialAccounts)
+      .set({ tokenExpiresAt: new Date(Date.now() + 30 * 24 * 3600_000) })
+      .where(eq(socialAccounts.id, accountId));
+    await health().runMaintenance(healthy as unknown as typeof fetch);
+    expect(await warnRows()).toHaveLength(0);
+
+    // Inside the 7-day warn window → one alert to owner + admin.
+    await ownerDb
+      .update(socialAccounts)
+      .set({ tokenExpiresAt: new Date(Date.now() + 2 * 24 * 3600_000) })
+      .where(eq(socialAccounts.id, accountId));
+    await health().runMaintenance(healthy as unknown as typeof fetch);
+    const first = await warnRows();
+    expect(first.length).toBe(2);
+    expect(new Set(first.map((n) => n.userId))).toEqual(
+      new Set([w.as('owner').userId, w.as('admin').userId]),
+    );
+
+    // The hourly sweep repeats → the 24 h dedupe keeps it at one alert per account.
+    await health().runMaintenance(healthy as unknown as typeof fetch);
+    expect(await warnRows()).toHaveLength(2);
   });
 });

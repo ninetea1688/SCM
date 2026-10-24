@@ -130,6 +130,38 @@ describe('approval workflow', () => {
     expect(res.body.code).toBe('self_approval_forbidden');
   });
 
+  it('NOTI-02 AC: submitting pings the approvers in-app, never the submitter', async () => {
+    const created = await w
+      .as('editor')
+      .http('post', '/posts')
+      .send({
+        title: 'รออนุมัติแจ้งเตือน',
+        variants: [{ socialAccountId: fbAccount, caption: 'ส่งตรวจ' }],
+      })
+      .expect(201);
+    await w
+      .as('editor')
+      .http('post', `/variants/${created.body.variants[0].id}/submit`)
+      .expect(200);
+
+    const rows = await ownerDb
+      .select()
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.workspaceId, w.workspaceId),
+          eq(notifications.type, 'approval_requested'),
+          eq(notifications.link, `/posts/${created.body.id}`),
+        ),
+      );
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    const recipients = new Set(rows.map((r) => r.userId));
+    expect(recipients.has(w.as('owner').userId)).toBe(true);
+    expect(recipients.has(w.as('admin').userId)).toBe(true);
+    expect(recipients.has(w.as('approver').userId)).toBe(true);
+    expect(recipients.has(w.as('editor').userId)).toBe(false);
+  });
+
   it('POST AC: editing after approval returns to review and cancels the scheduled job', async () => {
     const id = await scheduledVariant('จะถูกแก้');
     const res = await w

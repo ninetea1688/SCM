@@ -12,9 +12,9 @@
  * workspace-independent system work, never per-request tenant reads.
  */
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { type Db, memberships, socialAccounts } from '@scm/db';
+import { type Db, memberships, notifications, socialAccounts } from '@scm/db';
 import type { Platform } from '@scm/domain';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, gt, inArray } from 'drizzle-orm';
 import { TokenCipher } from '../common/crypto';
 import { SYSTEM_DB } from '../common/db-tokens';
 import { QuotaRecorder } from '../common/quota-recorder.service';
@@ -95,6 +95,7 @@ export class AccountHealthService {
         .update(socialAccounts)
         .set({ lastCheckedAt: new Date(), ...(a.status !== 'active' ? { status: 'active' } : {}) })
         .where(eq(socialAccounts.id, a.id));
+      await this.warnIfExpiring(a); // NOTI-02
       return verdict;
     }
     if (verdict === 'transient') {
@@ -191,6 +192,59 @@ export class AccountHealthService {
     } catch (e) {
       this.log.warn(`token refresh for account ${a.id} failed: ${String(e)}`);
     }
+  }
+
+  /**
+   * NOTI-02: a token inside the warn window gets an in-app + team LINE + email alert
+   * to owners/admins, deduped to at most one per account per day (the sweep runs hourly).
+   */
+  private async warnIfExpiring(a: Account): Promise<void> {
+    if (
+      !a.tokenExpiresAt ||
+      a.tokenExpiresAt.getTime() - Date.now() > this.cfg.TOKEN_EXPIRY_WARN_DAYS * 24 * 3600_000
+    ) {
+      return;
+    }
+    const link = `/accounts#${a.id}`;
+    const recent = await this.system
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.type, 'token_expiring'),
+          eq(notifications.link, link),
+          gt(notifications.sentAt, new Date(Date.now() - 24 * 3600_000)),
+        ),
+      )
+      .limit(1);
+    if (recent.length) return;
+    const after: (() => Promise<void>)[] = [];
+    await this.system.transaction(async (tx) => {
+      const admins = await tx
+        .select({ userId: memberships.userId })
+        .from(memberships)
+        .where(
+          and(
+            eq(memberships.workspaceId, a.workspaceId),
+            inArray(memberships.role, ['owner', 'admin']),
+          ),
+        );
+      after.push(
+        await this.notifications.notify(tx, {
+          workspaceId: a.workspaceId,
+          userIds: admins.map((m) => m.userId),
+          type: 'token_expiring',
+          title: `โทเคนบัญชี ${a.name} ใกล้หมดอายุ`,
+          body: 'กรุณาเชื่อมต่อใหม่ก่อนโทเคนหมดอายุ เพื่อไม่ให้การโพสต์สะดุด',
+          // The account fragment is the dedupe key (one alert per account per day).
+          link: `/accounts#${a.id}`,
+          teamLine: true,
+          email: true,
+        }),
+      );
+    });
+    for (const fn of after) await fn();
+    this.log.log(`warned owners/admins about the expiring token of account ${a.id}`);
   }
 
   /** Disconnect + immediate alert (CONN-07). System tx: worker context has no tenant. */
