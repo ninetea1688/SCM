@@ -31,7 +31,7 @@ const Reply = z.object({ text: z.string().min(1).max(5000) });
 const Status = z.object({ status: z.enum(['open', 'claimed', 'closed']) });
 const Hide = z.object({ reason: z.string().max(300).optional() });
 const ListQuery = z.object({
-  status: z.enum(['open', 'claimed', 'closed']).optional(),
+  status: z.enum(['open', 'claimed', 'closed', 'pending', 'replied', 'hidden']).optional(),
   platform: z.string().max(20).optional(),
   postId: z.string().uuid().optional(),
 });
@@ -189,6 +189,18 @@ export class EngageController {
     @Body() b: unknown,
   ) {
     return this.commentDesk.hide(t, u, id, parseInput(Hide, b).reason);
+  }
+
+  /** MOD-03: staff un-hide — back to the open desk. */
+  @Post('comments/:id/unhide')
+  @HttpCode(200)
+  @RequirePermission('inbox.reply')
+  unhideComment(
+    @Tenant() t: TenantInfo,
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.commentDesk.unhide(t, u, id);
   }
 
   @Get('analytics/posts')

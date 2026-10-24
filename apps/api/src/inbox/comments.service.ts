@@ -13,7 +13,9 @@ import {
   publishJobs,
   socialAccounts,
   withTenant,
+  workspaces,
 } from '@scm/db';
+import { classifyComment, DEFAULT_MODERATION, type ModerationConfig } from '@scm/domain';
 import { and, desc, eq } from 'drizzle-orm';
 import type { AuthUser, TenantInfo } from '../auth/auth.types';
 import { AuditService } from '../common/audit.service';
@@ -55,6 +57,7 @@ export class CommentsService {
         c.value.comment_id &&
         c.value.message,
     );
+    const moderation = await this.moderationConfig(account.workspaceId);
     let inserted = 0;
     for (const c of comments) {
       const v = c.value;
@@ -70,6 +73,9 @@ export class CommentsService {
           ),
         )
         .limit(1);
+      // MOD-02/03: forbidden words hide instantly; borderline phrasing or a watched
+      // account goes to the human-decision queue instead of the open desk.
+      const verdict = classifyComment(v.message!, v.from_name ?? null, moderation);
       const rows = await this.system
         .insert(postComments)
         .values({
@@ -82,12 +88,49 @@ export class CommentsService {
           parentExternalCommentId: v.parent_id ?? null,
           authorName: v.from_name ?? null,
           text: v.message!,
+          status:
+            verdict === 'forbidden' ? 'hidden' : verdict === 'borderline' ? 'pending' : 'open',
+          hiddenReason: verdict === 'forbidden' ? 'ซ่อนอัตโนมัติ: มีคำต้องห้าม' : null,
         })
         .onConflictDoNothing()
         .returning({ id: postComments.id });
       inserted += rows.length;
     }
     return inserted;
+  }
+
+  /** MOD-02: this workspace's moderation lists, defaults when unset. */
+  private async moderationConfig(workspaceId: string): Promise<ModerationConfig> {
+    const [ws] = await this.system
+      .select({ settings: workspaces.settings })
+      .from(workspaces)
+      .where(eq(workspaces.id, workspaceId));
+    return {
+      ...DEFAULT_MODERATION,
+      ...(((ws?.settings as { moderation?: Partial<ModerationConfig> })?.moderation ??
+        {}) as Partial<ModerationConfig>),
+    };
+  }
+
+  /** MOD-03: staff un-hide — returns the comment to the open desk. */
+  async unhide(t: TenantInfo, u: AuthUser, commentId: string) {
+    return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {
+      const [row] = await tx
+        .update(postComments)
+        .set({ status: 'open', hiddenReason: null })
+        .where(and(eq(postComments.id, commentId), eq(postComments.workspaceId, t.workspaceId)))
+        .returning();
+      if (!row) throw new NotFoundException({ code: 'comment_not_found' });
+      await this.audit.record(tx, {
+        workspaceId: t.workspaceId,
+        actorUserId: u.userId,
+        action: 'comment.unhidden',
+        targetType: 'post_comment',
+        targetId: commentId,
+        after: { status: 'open' },
+      });
+      return row;
+    });
   }
 
   list(t: TenantInfo, u: AuthUser, f: { platform?: string; postId?: string; status?: string }) {

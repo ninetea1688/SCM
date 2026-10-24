@@ -1,6 +1,7 @@
 export * from './adapter.js';
 export * from './inbox-rules.js';
 export * from './media.js';
+export * from './moderation.js';
 export * from './platform.js';
 export * from './publish-job.js';
 export * from './quota.js';

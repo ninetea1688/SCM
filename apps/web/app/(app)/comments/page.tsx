@@ -5,7 +5,7 @@
 import { PLATFORM_LABEL_TH, PLATFORMS, type Platform } from '@scm/domain';
 import Link from 'next/link';
 import { load } from '@/lib/load';
-import { CommentActions } from './comment-actions';
+import { CommentActions, UnhideButton } from './comment-actions';
 
 interface CommentRow {
   id: string;
@@ -15,7 +15,7 @@ interface CommentRow {
   postTitle: string | null;
   authorName: string | null;
   text: string;
-  status: 'open' | 'replied' | 'hidden';
+  status: 'open' | 'replied' | 'hidden' | 'pending';
   replyText: string | null;
   receivedAt: string;
 }
@@ -24,6 +24,7 @@ const STATUS_TH: Record<CommentRow['status'], { label: string; cls: string }> = 
   open: { label: 'รอตอบ', cls: 'bg-warn/10 text-warn' },
   replied: { label: 'ตอบแล้ว', cls: 'bg-ok/10 text-ok' },
   hidden: { label: 'ซ่อนแล้ว', cls: 'bg-line text-muted' },
+  pending: { label: 'รอตัดสิน (MOD-03)', cls: 'bg-brand/10 text-brand' },
 };
 
 const thTime = new Intl.DateTimeFormat('th-TH', {
@@ -36,6 +37,7 @@ const thTime = new Intl.DateTimeFormat('th-TH', {
 
 const TABS = [
   { value: '', label: 'รอดำเนินการ' },
+  { value: 'pending', label: 'รอตัดสิน' },
   { value: 'replied', label: 'ตอบแล้ว' },
   { value: 'hidden', label: 'ซ่อนแล้ว' },
   { value: 'all', label: 'ทั้งหมด' },
@@ -152,6 +154,7 @@ export default async function CommentsPage({
                 <p className="mt-1.5 text-xs text-muted">คอมเมนต์บนโพสต์ที่ไม่ได้โพสต์จากระบบนี้</p>
               )}
               <div className="mt-2">
+                {c.status === 'hidden' && <UnhideButton id={c.id} />}
                 <CommentActions id={c.id} status={c.status} />
               </div>
             </li>

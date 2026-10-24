@@ -30,8 +30,19 @@ const Member = z.object({
   accountScope: z.array(z.uuid()).optional(),
 });
 const Revoke = z.object({ allSessions: z.stringbool().default(true) });
-/** PRD §0: workspace-level behaviour toggles; extend as features land. */
-const Settings = z.object({ allowSelfApproval: z.boolean() }).strict();
+/** PRD §0 + MOD-02: workspace behaviour toggles and the moderation lists. */
+const Settings = z
+  .object({
+    allowSelfApproval: z.boolean().optional(),
+    moderation: z
+      .object({
+        forbiddenWords: z.array(z.string().max(100)).max(200).optional(),
+        borderlineWords: z.array(z.string().max(100)).max(200).optional(),
+        watchAccounts: z.array(z.string().max(100)).max(200).optional(),
+      })
+      .optional(),
+  })
+  .strict();
 
 @Controller('workspaces')
 export class WorkspacesController {

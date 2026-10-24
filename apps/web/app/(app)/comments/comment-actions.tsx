@@ -74,3 +74,34 @@ export function CommentActions({ id, status }: { id: string; status: string }) {
     </div>
   );
 }
+
+/** MOD-03: staff un-hide — returns a hidden comment to the open desk. */
+export function UnhideButton({ id }: { id: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          bff(`/comments/${id}/unhide`, 'POST')
+            .then(() => router.refresh())
+            .catch((e) => setError(describeError(e)))
+            .finally(() => setBusy(false));
+        }}
+        className="rounded-md px-3 py-1.5 text-sm ring-1 ring-line disabled:opacity-50"
+      >
+        {busy ? 'กำลังเปิด…' : 'เปิดใหม่ (ยกเลิกการซ่อน)'}
+      </button>
+      {error && (
+        <span role="alert" className="text-xs text-danger">
+          {error}
+        </span>
+      )}
+    </span>
+  );
+}

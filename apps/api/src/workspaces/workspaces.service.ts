@@ -95,14 +95,38 @@ export class WorkspacesService {
     });
   }
 
-  async updateSettings(t: TenantInfo, u: AuthUser, patch: { allowSelfApproval: boolean }) {
+  async updateSettings(
+    t: TenantInfo,
+    u: AuthUser,
+    patch: {
+      allowSelfApproval?: boolean;
+      moderation?: {
+        forbiddenWords?: string[];
+        borderlineWords?: string[];
+        watchAccounts?: string[];
+      };
+    },
+  ) {
     return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {
       const [ws] = await tx
         .select({ settings: workspaces.settings })
         .from(workspaces)
         .where(eq(workspaces.id, t.workspaceId));
       const before = (ws!.settings ?? {}) as Record<string, unknown>;
-      const after = { ...before, allowSelfApproval: patch.allowSelfApproval };
+      const after = {
+        ...before,
+        ...(patch.allowSelfApproval !== undefined
+          ? { allowSelfApproval: patch.allowSelfApproval }
+          : {}),
+        ...(patch.moderation
+          ? {
+              moderation: {
+                ...((before.moderation as Record<string, unknown>) ?? {}),
+                ...patch.moderation,
+              },
+            }
+          : {}),
+      };
       await tx.update(workspaces).set({ settings: after }).where(eq(workspaces.id, t.workspaceId));
       await this.audit.record(tx, {
         workspaceId: t.workspaceId,

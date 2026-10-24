@@ -575,6 +575,26 @@ export const savedReplies = pgTable(
   ],
 );
 
+/**
+ * NOTI-03/INBOX-11: per-user notification preferences. A missing row means "on" —
+ * staff opt OUT per type/channel rather than opt in. In-app rows respect the type
+ * toggle; email respects the email toggle for that type.
+ */
+export const notificationPrefs = pgTable(
+  'notification_prefs',
+  {
+    id: id(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    notificationType: text('notification_type').notNull(),
+    channel: text('channel', { enum: ['in_app', 'email'] }).notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('notification_prefs_uq').on(t.userId, t.notificationType, t.channel)],
+);
+
 /** INBOX-03: round-robin cursor per workspace (one row; the counter is not tenant data). */
 export const inboxRotation = pgTable('inbox_rotation', {
   workspaceId: workspaceRef().primaryKey(),
@@ -599,7 +619,7 @@ export const postComments = pgTable(
     authorName: text('author_name'),
     text: text('text').notNull(),
     /** MOD-01/03 lite: replied / hidden (spam/negative) / open for the team. */
-    status: text('status', { enum: ['open', 'replied', 'hidden'] })
+    status: text('status', { enum: ['open', 'replied', 'hidden', 'pending'] })
       .notNull()
       .default('open'),
     replyText: text('reply_text'),
@@ -665,6 +685,7 @@ export const TENANT_TABLES = [
   'conversations',
   'inbox_messages',
   'saved_replies',
+  'notification_prefs',
   'inbox_rotation',
   'post_comments',
   'post_metrics',
