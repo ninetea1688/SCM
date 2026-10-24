@@ -29,6 +29,18 @@ restore the pre-upgrade backup (runbooks/backup-restore.md) — never hand-edit 
 
 **Scale workers:** `docker compose -f docker-compose.prod.yml up -d --scale worker=3`.
 
+**Worker hardening (ADR-0008):** the worker's `/tmp` is a 2 GiB tmpfs so transcodes cannot fill
+the disk. The worker must reach the internet (platform APIs); to also deny it access to other
+internal hosts, drop RFC1918 + link-local destinations from the stack's subnet in the host's
+`DOCKER-USER` chain (traffic inside the compose bridge is unaffected):
+
+```bash
+SUBNET=$(docker network inspect scm_default -f '{{(index .IPAM.Config 0).Subnet}}')
+for NET in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.169.254/32; do
+  iptables -I DOCKER-USER -s "$SUBNET" -d "$NET" -j DROP
+done
+```
+
 **Checklist before going live:** `PUBLISHER_MODE=live`, Meta App in Live mode, data-deletion URL
 = `https://DOMAIN/webhooks/meta/data-deletion`, LINE webhook URL from the account connect response,
 `LINE_NOTIFY_*` set (PUB AC: failure alerts within 1 minute), backups copied off-host.

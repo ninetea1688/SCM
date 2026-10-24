@@ -26,11 +26,12 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | CONN-04 Encrypted tokens | ✅ | `TokenCipher` AES-256-GCM, key rotation by id |
 | CONN-05 Auto refresh + pre-slot health check | ✅ | `account-health.test.ts` + `account-maintenance.e2e.test.ts`: hourly sweep (system role), Meta token re-exchange hook, pre-slot probe in the prepare wake-up; expired tokens disconnect + alert |
 | CONN-06 Health dashboard | ✅ | `/accounts` table: status, expiry, last error + live quota column (`GET /accounts/:id/quota`) + reconnect button (sandbox re-upsert; live jumps to connect panel) |
-| CONN-07 Disconnect alert + reconnect | 🟡 | publish fails loudly with `account_disconnected`; proactive alert done (`account_disconnected` in-app + team LINE); reconnect button in UI pending |
+| CONN-07 Disconnect alert + reconnect | ✅ | publish fails loudly with `account_disconnected`; proactive alert (in-app + team LINE + email); reconnect button in `/accounts` (sandbox re-upsert; live jumps to the connect panel) |
 | MEDIA-01 Presigned direct upload | ✅ | `media.e2e.test.ts` (real SeaweedFS PUT); `/media` uploader. Fixed SDK checksum bug that broke browser PUTs |
 | MEDIA-02 Folders/tags/search | ✅ | API + UI: name search, folder, tag chips (with counts), orientation, duration window; `GET /media/facets` (`media-filters.e2e.test.ts`) |
 | MEDIA-03 Thumbnails + preview | ✅ | `media.e2e.test.ts` (15 tests): image/video/EXIF renditions, no upscale, poster frame content, audit event, queue hand-off + re-queue, final-attempt failure, sweeper; safety per ADR-0008 (allowlist, format match, size match, pixel cap, disguised playlist, immutable key). Video preview = poster still; documents: no preview yet |
 | MEDIA-04 FFmpeg/Sharp conversion | ✅ | `media-convert.e2e.test.ts` (7 tests, mutation-checked): HEIC tile grid → full JPEG, GPS/EXIF stripped, PNG flattened, HEVC .mov → H.264/AAC faststart, compliant MP4 remuxed only, oversize scaled to 1920, IG publish receives the JPEG. ADR-0009 |
+| MEDIA-08 Orphan cleanup (follow-up, done 2026-10-24) | ✅ | `MediaOrphanSweeper` (worker, hourly): abandoned `uploading` rows (≥60 min) deleted object+row; failed assets lose every stored object (original + renditions) with the row kept for audit (`orphanCleanedAt`); ready assets untouched (`media-orphans.e2e.test.ts`) |
 | MEDIA-06 Short-lived signed URLs | ✅ | `StorageService.presignGet` (TTL from config), public endpoint split; originals signed as attachment only |
 | POST-01 Post → variants | ✅ | e2e, composer UI |
 | POST-02 Per-platform options | ✅ | schema + validation; shared `VariantOptions` UI in composer + variant card (IG format, FB format, YouTube title, LINE broadcast/narrowcast) |
@@ -50,7 +51,7 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | PUB-08 LINE recipients/quota preview | ✅ | `GET /accounts/:id/publish-preview` (targeted reach + monthly quota, `publish-preview` e2e) + "ตัวอย่างก่อนส่ง" on the LINE variant card before scheduling; Narrowcast needs Audiences (CRM-03, P5) |
 | PUB-10 Kill Switch (pulled into P1) | ✅ | e2e "Kill Switch" |
 | NOTI-01 In-app + team LINE + email | ✅ | publish_failed/account_disconnected alert in-app + team LINE + email via SMTP (Mailpit in dev, `ops.e2e.test.ts`) |
-| NOTI-02 Types (P1 subset) | 🟡 | publish_failed done |
+| NOTI-02 Types (P1 subset) | ✅ | publish_failed, account_disconnected, approval_requested (submit pings owner/admin/approver, never the author), token_expiring (daily-deduped warn in the health sweep); remaining types are P2–P3 |
 | OPS-01 Immutable audit log | ✅ | rls.test "append-only" |
 | OPS-02/03/04 Observability | 🟡 | pino logs, `/health`; OPS-03 ✅ Prometheus `/metrics` (publish outcomes per platform, queue depth); OPS-04 ✅ `/status` page + worker `StatusWatchJob` alerts owners/admins in-app + ONE team LINE push on component-down/backlog threshold, recovery notice, edge-triggered (`status-watch.e2e.test.ts`); OPS-02 🟡 Sentry SDK wired behind `SENTRY_DSN` (untested — needs DSN) |
 | OPS-07 Platform changelog process | 🟡 | `platform-researcher` agent + `/verify-platform-limits` skill |
@@ -62,8 +63,7 @@ Evidence = the test that proves the AC. Update this file in the same change that
 
 ## Known follow-ups
 
-- MEDIA-08: delete orphaned uploads/renditions of failed or abandoned assets (PDPA retention)
-- Prod hardening for the worker: size-limited temp volume, no egress to internal hosts (ADR-0008)
+- Worker egress restriction: the 2 GiB /tmp tmpfs is in compose; the DOCKER-USER firewall snippet (runbooks/deploy.md) is applied per host at setup
 
 ## Phase 0 blockers (owner actions, outside code)
 

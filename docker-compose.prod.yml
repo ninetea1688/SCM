@@ -62,6 +62,11 @@ services:
   worker:
     <<: *app
     command: ["node", "--enable-source-maps", "dist/worker.js"]
+    # ADR-0008: transcodes write to /tmp — bound it so hostile media cannot fill the disk.
+    volumes:
+      - type: tmpfs
+        target: /tmp
+        tmpfs: { size: "2g", mode: 1777 }
     # Scale horizontally: docker compose up -d --scale worker=2 (BullMQ guarantees one runner).
 
   migrate:
