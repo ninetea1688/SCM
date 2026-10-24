@@ -60,6 +60,28 @@ describe('workspace settings (PRD §0)', () => {
     expect(entry!.after).toEqual({ allowSelfApproval: true });
   });
 
+  it('stores the brand kit (BRAND-01/02) and it shows in /workspaces/current', async () => {
+    await w
+      .as('owner')
+      .http('patch', '/workspaces/current/settings')
+      .send({
+        brand: {
+          signature: 'สข้อมูลจาก สปสช. www.nhso.go.th',
+          defaultHashtags: ['สปสช', 'สุขภาพถ้วนหน้า'],
+          tone: 'เป็นทางการ อบอุ่น เข้าใจง่าย',
+          voiceNotes: 'ไม่ใช้คำสัญญามากเกินไป',
+          examplePosts: ['ประกาศตรวจสุขภาพฟรีประจำปี'],
+        },
+      })
+      .expect(200);
+    const cur = await w.as('viewer').http('get', '/workspaces/current').expect(200);
+    expect(cur.body.settings.brand).toMatchObject({
+      signature: 'สข้อมูลจาก สปสช. www.nhso.go.th',
+      tone: 'เป็นทางการ อบอุ่น เข้าใจง่าย',
+    });
+    expect(cur.body.settings.brand.defaultHashtags).toEqual(['สปสช', 'สุขภาพถ้วนหน้า']);
+  });
+
   it('rejects unknown setting keys', async () => {
     await w
       .as('owner')

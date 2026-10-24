@@ -305,6 +305,53 @@ describe('reschedule (CAL-01)', () => {
   });
 });
 
+describe('POST-07 forbidden words (workspace list)', () => {
+  it('a caption containing a workspace forbidden word cannot be submitted; others pass', async () => {
+    await w
+      .as('owner')
+      .http('patch', '/workspaces/current/settings')
+      .send({ moderation: { forbiddenWords: ['ยาปฏิจุลิชีพ'] } })
+      .expect(200);
+
+    const created = await w
+      .as('editor')
+      .http('post', '/posts')
+      .send({
+        title: 'คำต้องห้าม',
+        variants: [{ socialAccountId: fbAccount, caption: 'โฆษณายาปฏิจุลิชีพราคาถูก' }],
+      })
+      .expect(201);
+    const blocked = await w
+      .as('editor')
+      .http('post', `/variants/${created.body.variants[0].id}/submit`);
+    expect(blocked.status).toBe(400);
+    expect(
+      blocked.body.issues.some(
+        (i: { code: string; messageTh: string }) =>
+          i.code === 'forbidden_word' && i.messageTh.includes('คำต้องห้าม'),
+      ),
+    ).toBe(true);
+
+    // Clean caption goes through.
+    const clean = await w
+      .as('editor')
+      .http('post', '/posts')
+      .send({
+        title: 'ไม่มีคำต้องห้าม',
+        variants: [{ socialAccountId: fbAccount, caption: 'ประกาศทั่วไปครับ' }],
+      })
+      .expect(201);
+    await w.as('editor').http('post', `/variants/${clean.body.variants[0].id}/submit`).expect(200);
+
+    // Restore the list for other tests.
+    await w
+      .as('owner')
+      .http('patch', '/workspaces/current/settings')
+      .send({ moderation: { forbiddenWords: [] } })
+      .expect(200);
+  });
+});
+
 describe('calendar filters (CAL-02)', () => {
   const window = `from=${new Date(Date.now() - 3600_000).toISOString()}&to=${new Date(Date.now() + 2 * 3600_000).toISOString()}`;
 

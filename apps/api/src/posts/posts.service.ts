@@ -670,6 +670,25 @@ export class PostsService {
       },
       facts,
     );
+    // POST-07 (words part of MOD-02): the workspace's forbidden list blocks submission.
+    const [wsCfg] = await tx
+      .select({ settings: workspaces.settings })
+      .from(workspaces)
+      .where(eq(workspaces.id, v.workspaceId));
+    const forbidden = (
+      ((wsCfg?.settings as { moderation?: { forbiddenWords?: string[] } })?.moderation
+        ?.forbiddenWords ?? []) as string[]
+    ).filter((w) => w.length > 0);
+    for (const word of forbidden) {
+      if (v.caption.toLowerCase().includes(word.toLowerCase())) {
+        issues.push({
+          code: 'forbidden_word',
+          severity: 'error',
+          field: 'caption',
+          messageTh: `ข้อความมีคำต้องห้ามขององค์กร (“${word}”) กรุณาแก้ไขก่อนส่งตรวจ`,
+        });
+      }
+    }
     // MEDIA-07: lapsed rights block submission; an expiry within RIGHTS_WARN_DAYS warns.
     const dayMs = 24 * 3600_000;
     for (const m of media) {

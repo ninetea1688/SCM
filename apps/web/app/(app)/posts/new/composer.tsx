@@ -20,7 +20,14 @@ interface VariantDraft {
   options: VariantOptions;
 }
 
-export function Composer({ accounts }: { accounts: AccountOption[] }) {
+export function Composer({
+  accounts,
+  brand,
+}: {
+  accounts: AccountOption[];
+  /** BRAND-01: workspace signature + default hashtags, insertable in one tap. */
+  brand: { signature: string; defaultHashtags: string[] };
+}) {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -99,6 +106,34 @@ export function Composer({ accounts }: { accounts: AccountOption[] }) {
         />
         <span className="text-xs text-muted">{body.length.toLocaleString('th-TH')} ตัวอักษร</span>
       </label>
+      {(brand?.signature || (brand?.defaultHashtags?.length ?? 0) > 0) && (
+        <div className="flex flex-wrap items-center gap-2" title="Brand Kit">
+          {brand?.signature && (
+            <button
+              type="button"
+              onClick={() => setBody((b) => (b ? `${b}\n\n${brand.signature}` : brand.signature))}
+              className="rounded-full border border-line px-2.5 py-1 text-xs text-muted transition-colors hover:border-brand hover:text-ink"
+            >
+              แทรกลายเซ็นท้ายโพสต์
+            </button>
+          )}
+          {(brand?.defaultHashtags ?? []).map((h) => (
+            <button
+              key={h}
+              type="button"
+              onClick={() =>
+                setBody((b) => {
+                  const tag = `#${h}`;
+                  return b.includes(tag) ? b : `${b}${b.endsWith(' ') || !b ? '' : ' '}${tag}`;
+                })
+              }
+              className="rounded-full border border-line px-2.5 py-1 text-xs text-muted transition-colors hover:border-brand hover:text-ink"
+            >
+              #{h}
+            </button>
+          ))}
+        </div>
+      )}
 
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">โพสต์ไปที่</legend>

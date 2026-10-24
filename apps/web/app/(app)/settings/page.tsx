@@ -7,6 +7,7 @@ import type { Role } from '@scm/domain';
 import Link from 'next/link';
 import { load } from '@/lib/load';
 import { ApiError } from '@/lib/session';
+import { BrandKitEditor } from './brand-kit-editor';
 import { ModerationEditor, NotificationPrefsEditor } from './settings-extras';
 import { AddMemberForm, RevokeButton, SelfApprovalToggle } from './settings-forms';
 
@@ -29,6 +30,13 @@ interface Current {
       forbiddenWords?: string[];
       borderlineWords?: string[];
       watchAccounts?: string[];
+    };
+    brand?: {
+      signature?: string;
+      defaultHashtags?: string[];
+      tone?: string;
+      voiceNotes?: string;
+      examplePosts?: string[];
     };
   };
 }
@@ -92,6 +100,11 @@ export default async function SettingsPage() {
           คำต้องห้าม = ซ่อนอัตโนมัติ · คำก้ำกึ่ง/บัญชีที่เฝ้าระวัง = เข้าคิวให้คนตัดสิน
         </p>
         <ModerationEditor initial={current.settings.moderation ?? {}} />
+      </section>
+
+      <section className="space-y-3 rounded-xl border border-line bg-surface p-4">
+        <h2 className="font-medium">Brand Kit และโทนเสียง (BRAND-01/02)</h2>
+        <BrandKitEditor initial={current.settings.brand ?? {}} />
       </section>
 
       <section className="space-y-3 rounded-xl border border-line bg-surface p-4">

@@ -41,6 +41,16 @@ const Settings = z
         watchAccounts: z.array(z.string().max(100)).max(200).optional(),
       })
       .optional(),
+    /** BRAND-01/02: kit + voice — read by the composer, used as AI context later. */
+    brand: z
+      .object({
+        signature: z.string().max(500).optional(),
+        defaultHashtags: z.array(z.string().max(50)).max(30).optional(),
+        tone: z.string().max(300).optional(),
+        voiceNotes: z.string().max(2000).optional(),
+        examplePosts: z.array(z.string().max(2000)).max(10).optional(),
+      })
+      .optional(),
   })
   .strict();
 

@@ -105,6 +105,13 @@ export class WorkspacesService {
         borderlineWords?: string[];
         watchAccounts?: string[];
       };
+      brand?: {
+        signature?: string;
+        defaultHashtags?: string[];
+        tone?: string;
+        voiceNotes?: string;
+        examplePosts?: string[];
+      };
     },
   ) {
     return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {
@@ -123,6 +130,14 @@ export class WorkspacesService {
               moderation: {
                 ...((before.moderation as Record<string, unknown>) ?? {}),
                 ...patch.moderation,
+              },
+            }
+          : {}),
+        ...(patch.brand
+          ? {
+              brand: {
+                ...((before.brand as Record<string, unknown>) ?? {}),
+                ...patch.brand,
               },
             }
           : {}),
