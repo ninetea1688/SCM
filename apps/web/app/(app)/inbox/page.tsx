@@ -6,7 +6,7 @@ import type { Platform } from '@scm/domain';
 import Link from 'next/link';
 import { load } from '@/lib/load';
 import { ApiError } from '@/lib/session';
-import { ConversationActions } from './conversation-actions';
+import { ConversationActions, PendingReview } from './conversation-actions';
 
 interface Conversation {
   id: string;
@@ -17,6 +17,7 @@ interface Conversation {
   assignee: string | null;
   slaDueAt: string | null;
   slaEscalatedAt: string | null;
+  replyWindowUntil: string | null;
   lastMessageAt: string;
   lastMessagePreview: string | null;
 }
@@ -27,6 +28,8 @@ interface Message {
   text: string;
   createdAt: string;
   isInternalNote: boolean;
+  isAutoReply: boolean;
+  status: 'sent' | 'pending' | 'rejected';
 }
 
 const STATUS_TH: Record<Conversation['status'], { label: string; cls: string }> = {
@@ -130,34 +133,55 @@ export default async function InboxPage({
                 )}
               </header>
               <ul className="flex-1 space-y-2 overflow-y-auto p-4" aria-label="ข้อความ">
-                {(messages ?? []).map((m) =>
-                  m.isInternalNote ? (
-                    <li
-                      key={m.id}
-                      className="mx-auto max-w-[90%] rounded-lg border border-dashed border-warn bg-warn/5 px-3 py-1.5 text-xs text-ink"
-                    >
-                      <span className="font-medium text-warn">โน้ตภายใน · {m.senderName}</span>
-                      <span className="ml-2">{m.text}</span>
-                      <span className="ml-2 opacity-60">
-                        {thTime.format(new Date(m.createdAt))}
-                      </span>
-                    </li>
-                  ) : (
+                {(messages ?? []).map((m) => {
+                  if (m.status === 'pending' || m.status === 'rejected') {
+                    return (
+                      <li
+                        key={m.id}
+                        className={`ml-auto max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
+                          m.status === 'pending'
+                            ? 'bg-warn/10 ring-1 ring-warn'
+                            : 'bg-danger/5 ring-1 ring-danger/40'
+                        }`}
+                      >
+                        {m.text}
+                        <span className="mt-0.5 block text-[10px] text-warn">
+                          {m.status === 'pending'
+                            ? '⏳ รอหัวหน้าอนุมัติ (เนื้อหาอ่อนไหว) — ยังไม่ได้ส่งถึงลูกค้า'
+                            : '✕ ถูกตีกลับ กรุณาร่างใหม่'}
+                        </span>
+                        <span className="block text-[10px] opacity-70">
+                          {thTime.format(new Date(m.createdAt))}
+                        </span>
+                        <div className="mt-1.5">
+                          <PendingReview messageId={m.id} />
+                        </div>
+                      </li>
+                    );
+                  }
+                  return (
                     <li
                       key={m.id}
                       className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
                         m.direction === 'in'
-                          ? 'bg-line text-ink'
+                          ? m.isAutoReply
+                            ? 'ml-auto bg-line/70 text-muted italic'
+                            : 'bg-line text-ink'
                           : 'ml-auto bg-brand text-brand-ink'
                       }`}
                     >
+                      {m.isAutoReply && (
+                        <span className="block text-[10px] opacity-70">
+                          ตอบอัตโนมัติ (นอกเวลาทำการ)
+                        </span>
+                      )}
                       {m.text}
                       <span className="mt-0.5 block text-[10px] opacity-70">
                         {thTime.format(new Date(m.createdAt))}
                       </span>
                     </li>
-                  ),
-                )}
+                  );
+                })}
                 {(messages ?? []).length === 0 && (
                   <li className="text-center text-sm text-muted">ยังไม่มีข้อความในบทสนทนานี้</li>
                 )}

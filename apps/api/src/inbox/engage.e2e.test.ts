@@ -128,7 +128,13 @@ describe('chat desk (INBOX-01/02)', () => {
     const id = conv.body[0].id as string;
 
     const msgs = await w.as('agent').http('get', `/inbox/conversations/${id}/messages`).expect(200);
-    expect(msgs.body.map((m: { text: string }) => m.text)).toEqual(['สอบถามสิทธิ์ตรวจสุขภาพครับ']);
+    // INBOX-07: outside working hours an auto-answer joins the thread before a human replies.
+    expect(msgs.body.some((m: { text: string }) => m.text === 'สอบถามสิทธิ์ตรวจสุขภาพครับ')).toBe(true);
+    expect(
+      msgs.body
+        .filter((m: { isAutoReply: boolean }) => m.isAutoReply)
+        .every((m: { text: string }) => m.text.includes('นอกเวลาทำการ')),
+    ).toBe(true);
 
     const reply = await w
       .as('agent')
@@ -184,7 +190,7 @@ describe('chat desk (INBOX-01/02)', () => {
       .select()
       .from(inboxMessages)
       .where(eq(inboxMessages.conversationId, id));
-    expect(count.length).toBe(3); // in, out, in — no duplicate
+    expect(count.length).toBe(5); // in, auto-reply, out, in, auto-reply — redelivery deduped
     expect(row!.status).toBe('open');
   });
 

@@ -87,6 +87,30 @@ export class EngageController {
     return this.inbox.setStatus(t, u, id, parseInput(Status, b).status);
   }
 
+  /** INBOX-09: supervisor approves a pending sensitive reply → it goes out now. */
+  @Post('inbox/messages/:id/approve')
+  @HttpCode(200)
+  @RequirePermission('inbox.reply')
+  approveMessage(
+    @Tenant() t: TenantInfo,
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.inbox.reviewMessage(t, u, id, 'approved');
+  }
+
+  /** INBOX-09: supervisor rejects → back to the agent for redrafting. */
+  @Post('inbox/messages/:id/reject')
+  @HttpCode(200)
+  @RequirePermission('inbox.reply')
+  rejectMessage(
+    @Tenant() t: TenantInfo,
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.inbox.reviewMessage(t, u, id, 'rejected');
+  }
+
   /** INBOX-06: internal note — stored on the thread, never sent to the customer. */
   @Post('inbox/conversations/:id/note')
   @HttpCode(200)

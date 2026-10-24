@@ -159,3 +159,52 @@ export function ConversationActions({
     </div>
   );
 }
+
+/** INBOX-09: supervisors see approve/reject on each pending sensitive reply in the thread. */
+export function PendingReview({ messageId }: { messageId: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function decide(decision: 'approved' | 'rejected') {
+    setBusy(true);
+    setError(null);
+    try {
+      await bff(
+        `/inbox/messages/${messageId}/${decision === 'approved' ? 'approve' : 'reject'}`,
+        'POST',
+      );
+      router.refresh();
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex gap-2">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void decide('approved')}
+        className="rounded-md bg-ok px-3 py-1 text-xs font-medium text-ink disabled:opacity-50"
+      >
+        อนุมัติส่ง
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void decide('rejected')}
+        className="rounded-md px-3 py-1 text-xs text-danger ring-1 ring-danger disabled:opacity-50"
+      >
+        ตีกลับ
+      </button>
+      {error && (
+        <span role="alert" className="text-xs text-danger">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}

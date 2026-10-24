@@ -15,7 +15,17 @@ import {
   socialAccounts,
   users,
   withTenant,
+  workspaces,
 } from '@scm/db';
+import {
+  autoReplyText,
+  DEFAULT_SENSITIVE_KEYWORDS,
+  DEFAULT_WORKING_HOURS,
+  isSensitiveReply,
+  isWithinWorkingHours,
+  replyWindowUntil,
+  type WorkingHours,
+} from '@scm/domain';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { AuthUser, TenantInfo } from '../auth/auth.types';
 import { AuditService } from '../common/audit.service';
@@ -51,6 +61,7 @@ export class InboxService {
   async upsertFromLine(account: Account, events: LineInboxEvent[]): Promise<number> {
     const chats = events.filter((e) => e.type === 'message' && e.source?.userId && e.message?.text);
     let inserted = 0;
+    let lastConversationId: string | null = null;
     for (const e of chats) {
       const at = new Date(e.timestamp ?? Date.now());
       await this.system.transaction(async (tx) => {
@@ -93,7 +104,14 @@ export class InboxService {
           .onConflictDoNothing()
           .returning({ id: inboxMessages.id });
         inserted += rows.length;
+        lastConversationId = conv!.id;
       });
+    }
+    // INBOX-07: outside working hours, answer once with a polite auto-reply (best effort).
+    if (lastConversationId) {
+      await this.autoReplyIfOutOfHours(account, lastConversationId).catch((e) =>
+        this.log.warn(`auto-reply failed: ${String(e)}`),
+      );
     }
     // INBOX-03: new conversations get an agent round-robin (best effort — never blocks the webhook).
     try {
@@ -103,6 +121,66 @@ export class InboxService {
       console.error('auto-assign failed:', e instanceof Error ? e.message : e);
     }
     return inserted;
+  }
+
+  /**
+   * INBOX-07: outside the workspace's working hours, answer new contact attempts with a
+   * polite auto-answer. Dedupe: only when the thread's newest message is the customer's —
+   * a second message while the auto-answer is still the last thing said stays silent.
+   */
+  private async autoReplyIfOutOfHours(account: Account, conversationId: string): Promise<void> {
+    const [ws] = await this.system
+      .select({ settings: workspaces.settings, timezone: workspaces.timezone })
+      .from(workspaces)
+      .where(eq(workspaces.id, account.workspaceId));
+    const hours = {
+      ...DEFAULT_WORKING_HOURS,
+      ...(((ws?.settings as { inboxWorkingHours?: WorkingHours })?.inboxWorkingHours ??
+        {}) as Partial<WorkingHours>),
+    };
+    const now = new Date();
+    if (isWithinWorkingHours(now, hours)) return;
+
+    await this.system.transaction(async (tx) => {
+      const thread = await tx
+        .select({ direction: inboxMessages.direction, isAutoReply: inboxMessages.isAutoReply })
+        .from(inboxMessages)
+        .where(eq(inboxMessages.conversationId, conversationId))
+        .orderBy(desc(inboxMessages.createdAt))
+        .limit(10);
+      // INBOX-07 dedupe: since the last human reply, have we already auto-answered
+      // this unanswered streak? Walk newest-first; stop at a human outbound.
+      for (const m of thread) {
+        if (m.direction === 'out' && !m.isAutoReply) break; // human answered → arm again
+        if (m.isAutoReply) return; // already nagged in this streak → stay silent
+      }
+      const adapter = this.adapters.get('line');
+      if (!adapter.sendMessage) return;
+      const [conv] = await tx
+        .select({ externalUserId: conversations.externalUserId })
+        .from(conversations)
+        .where(eq(conversations.id, conversationId));
+      if (!conv) return;
+      const text = autoReplyText(hours);
+      const sent = await adapter.sendMessage(
+        {
+          socialAccountId: account.id,
+          externalId: account.externalId,
+          accessToken: this.cipher.decrypt(account.accessTokenEnc!),
+        },
+        conv.externalUserId,
+        text,
+      );
+      await tx.insert(inboxMessages).values({
+        workspaceId: account.workspaceId,
+        conversationId,
+        direction: 'out',
+        senderName: 'ระบบตอบอัตโนมัติ',
+        text,
+        isAutoReply: true,
+        externalId: sent.externalId,
+      });
+    });
   }
 
   /** INBOX-03: hand every still-unclaimed open thread to the next agent in rotation. */
@@ -183,6 +261,9 @@ export class InboxService {
         )
         .orderBy(desc(conversations.lastMessageAt))
         .limit(100),
+    ).then((rows) =>
+      // INBOX-08: per-platform reply window (LINE = unlimited → null)
+      rows.map((r) => ({ ...r, replyWindowUntil: replyWindowUntil(r.platform, r.lastMessageAt) })),
     );
   }
 
@@ -202,7 +283,11 @@ export class InboxService {
     );
   }
 
-  /** INBOX-02: answering claims the thread and clears the SLA debt; the message goes out via the adapter. */
+  /**
+   * INBOX-02/09: answering claims the thread and clears the SLA debt. A reply containing
+   * sensitive keywords (INBOX-09) from an agent waits for supervisor approval — owners,
+   * admins and approvers send directly; agents store it as 'pending'.
+   */
   async reply(t: TenantInfo, u: AuthUser, conversationId: string, text: string) {
     return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {
       const [conv] = await tx
@@ -212,6 +297,44 @@ export class InboxService {
           and(eq(conversations.id, conversationId), eq(conversations.workspaceId, t.workspaceId)),
         );
       if (!conv) throw new NotFoundException({ code: 'conversation_not_found' });
+
+      // INBOX-09: sensitive replies from agents need a supervisor's approval first.
+      const [ws] = await tx
+        .select({ settings: workspaces.settings })
+        .from(workspaces)
+        .where(eq(workspaces.id, t.workspaceId));
+      const keywords = [
+        ...DEFAULT_SENSITIVE_KEYWORDS,
+        ...(((ws?.settings as { sensitiveKeywords?: string[] })?.sensitiveKeywords ??
+          []) as string[]),
+      ];
+      const supervisor = t.role !== 'agent';
+      if (isSensitiveReply(text, keywords) && !supervisor) {
+        const [me] = await tx
+          .select({ name: users.displayName })
+          .from(users)
+          .where(eq(users.id, u.userId));
+        const [pending] = await tx
+          .insert(inboxMessages)
+          .values({
+            workspaceId: t.workspaceId,
+            conversationId,
+            direction: 'out',
+            senderName: me?.name ?? 'เจ้าหน้าที่',
+            text,
+            status: 'pending',
+          })
+          .returning();
+        await this.audit.record(tx, {
+          workspaceId: t.workspaceId,
+          actorUserId: u.userId,
+          action: 'inbox.reply_pending',
+          targetType: 'conversation',
+          targetId: conversationId,
+          after: { reason: 'sensitive', role: t.role },
+        });
+        return pending!;
+      }
       const [account] = await tx
         .select()
         .from(socialAccounts)
@@ -235,13 +358,17 @@ export class InboxService {
         conv.externalUserId,
         text,
       );
+      const [me] = await tx
+        .select({ name: users.displayName })
+        .from(users)
+        .where(eq(users.id, u.userId));
       const [msg] = await tx
         .insert(inboxMessages)
         .values({
           workspaceId: t.workspaceId,
           conversationId,
           direction: 'out',
-          senderName: 'เจ้าหน้าที่',
+          senderName: me?.name ?? 'เจ้าหน้าที่',
           text,
           externalId: sent.externalId,
         })
@@ -303,6 +430,85 @@ export class InboxService {
         after: { length: text.length },
       });
       return msg!;
+    });
+  }
+
+  /** INBOX-09: supervisor decision on a pending sensitive reply. */
+  async reviewMessage(
+    t: TenantInfo,
+    u: AuthUser,
+    messageId: string,
+    decision: 'approved' | 'rejected',
+  ) {
+    return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {
+      const [msg] = await tx
+        .select()
+        .from(inboxMessages)
+        .where(and(eq(inboxMessages.id, messageId), eq(inboxMessages.workspaceId, t.workspaceId)));
+      if (!msg) throw new NotFoundException({ code: 'message_not_found' });
+      if (msg.status !== 'pending') {
+        throw new NotFoundException({ code: 'not_pending', message: 'ข้อความนี้ไม่ได้รอการอนุมัติ' });
+      }
+      if (decision === 'rejected') {
+        const [row] = await tx
+          .update(inboxMessages)
+          .set({ status: 'rejected', reviewedBy: u.userId, reviewedAt: new Date() })
+          .where(eq(inboxMessages.id, messageId))
+          .returning();
+        await this.audit.record(tx, {
+          workspaceId: t.workspaceId,
+          actorUserId: u.userId,
+          action: 'inbox.reply_rejected',
+          targetType: 'inbox_message',
+          targetId: messageId,
+          after: { reason: 'supervisor' },
+        });
+        return row!;
+      }
+      // Approved → send it out through the platform now.
+      const [conv] = await tx
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, msg.conversationId));
+      const [account] = await tx
+        .select()
+        .from(socialAccounts)
+        .where(eq(socialAccounts.id, conv!.socialAccountId));
+      if (!account?.accessTokenEnc || account.status === 'disconnected') {
+        throw new NotFoundException({ code: 'account_disconnected' });
+      }
+      const adapter = this.adapters.get(conv!.platform as 'line');
+      if (!adapter.sendMessage) {
+        throw new NotFoundException({ code: 'not_supported' });
+      }
+      const sent = await adapter.sendMessage(
+        {
+          socialAccountId: account.id,
+          externalId: account.externalId,
+          accessToken: this.cipher.decrypt(account.accessTokenEnc),
+        },
+        conv!.externalUserId,
+        msg.text,
+      );
+      const [row] = await tx
+        .update(inboxMessages)
+        .set({
+          status: 'sent',
+          reviewedBy: u.userId,
+          reviewedAt: new Date(),
+          externalId: sent.externalId,
+        })
+        .where(eq(inboxMessages.id, messageId))
+        .returning();
+      await this.audit.record(tx, {
+        workspaceId: t.workspaceId,
+        actorUserId: u.userId,
+        action: 'inbox.reply_approved',
+        targetType: 'inbox_message',
+        targetId: messageId,
+        after: { externalId: sent.externalId },
+      });
+      return row!;
     });
   }
 

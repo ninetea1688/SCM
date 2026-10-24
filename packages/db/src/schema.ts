@@ -534,6 +534,17 @@ export const inboxMessages = pgTable(
     text: text('text').notNull(),
     /** INBOX-06: internal notes are invisible to the customer (never sent to the platform). */
     isInternalNote: boolean('is_internal_note').notNull().default(false),
+    /** INBOX-07: out-of-hours auto-answer (shown grey in the thread). */
+    isAutoReply: boolean('is_auto_reply').notNull().default(false),
+    /**
+     * INBOX-09: sensitive replies from agents wait for a supervisor here — 'sent' = already
+     * on the platform, 'pending' = awaiting approval, 'rejected' = sent back to redraft.
+     */
+    status: text('status', { enum: ['sent', 'pending', 'rejected'] })
+      .notNull()
+      .default('sent'),
+    reviewedBy: uuid('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
     /** Platform message id (LINE messageId) for redelivery dedupe; null for local drafts. */
     externalId: text('external_id'),
     createdAt: createdAt(),
