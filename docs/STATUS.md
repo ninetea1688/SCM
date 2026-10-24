@@ -21,8 +21,8 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | AUTH-04 2FA owner/admin | 🟡 | smoke test; `TenantGuard` `mfa_required_for_role`. Enforcement config-gated (`AUTH_ENFORCE_MFA`: on in production, off in dev/test until SSO/Azure AD — SEC-02); `auth-mfa.e2e.test.ts` proves the gate |
 | AUTH-06 ≥2 owners | ✅ | e2e "membership" |
 | AUTH-07 Instant revoke + connected-accounts report | ✅ | e2e "membership" |
-| CONN-01 Meta OAuth (pages + IG) | 🟡 | `POST /accounts/meta` written, untested against Meta (needs App) |
-| CONN-02 LINE connect + webhook | 🟡 | verifies token live; untested without a channel |
+| CONN-01 Meta OAuth (pages + IG) | 🟡 | full OAuth dialog flow (`GET /accounts/meta/oauth/start` + public signed-state callback, `meta-oauth.e2e.test.ts`) + paste-token fallback + "เชื่อมต่อผ่าน Meta" button in `/accounts`; untested against real Meta (needs App — owner) |
+| CONN-02 LINE connect + webhook | 🟡 | token verified live at connect; LINE OA form in `/accounts` shows the webhook URL to paste into the console; untested without a real channel |
 | CONN-04 Encrypted tokens | ✅ | `TokenCipher` AES-256-GCM, key rotation by id |
 | CONN-05 Auto refresh + pre-slot health check | ✅ | `account-health.test.ts` + `account-maintenance.e2e.test.ts`: hourly sweep (system role), Meta token re-exchange hook, pre-slot probe in the prepare wake-up; expired tokens disconnect + alert |
 | CONN-06 Health dashboard | ✅ | `/accounts` table: status, expiry, last error + live quota column (`GET /accounts/:id/quota`) + reconnect button (sandbox re-upsert; live jumps to connect panel) |

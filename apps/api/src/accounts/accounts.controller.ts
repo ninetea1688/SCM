@@ -122,6 +122,13 @@ export class AccountsController {
     return this.accounts.connectMeta(t, u, parseInput(Meta, b).userAccessToken);
   }
 
+  /** CONN-01: the Meta consent-dialog URL; the web /session route sends the browser here. */
+  @Get('meta/oauth/start')
+  @RequirePermission('account.connect')
+  metaOauthStart(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser) {
+    return this.accounts.metaOAuthStart(t, u);
+  }
+
   @Post('sandbox')
   @RequirePermission('account.connect')
   sandbox(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser, @Body() b: unknown) {

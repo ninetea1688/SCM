@@ -1,4 +1,5 @@
 /** Social account connections — PRD CONN-01/02/04/06/07. */
+import { createHmac } from 'node:crypto';
 import {
   BadGatewayException,
   BadRequestException,
@@ -100,6 +101,66 @@ export class AccountsService {
       }
     }
     return out.map((a) => this.view(a));
+  }
+
+  /**
+   * CONN-01 OAuth dialog flow. `start` builds the Meta consent URL carrying an HMAC-signed
+   * state (identity + 10-minute expiry, signed with JWT_SECRET). Meta then redirects the
+   * browser to the public callback, which verifies the state, exchanges the code for a
+   * short-lived user token and reuses connectMeta() — so Pages and their Instagram
+   * Professional accounts all land in one round trip.
+   */
+  metaOAuthStart(t: TenantInfo, u: AuthUser): { redirectUrl: string } {
+    if (!this.cfg.META_APP_ID || !this.cfg.META_APP_SECRET) {
+      throw new BadRequestException({ code: 'meta_not_configured' });
+    }
+    const redirectUri = `${this.cfg.PUBLIC_BASE_URL}/api/accounts/meta/oauth/callback`;
+    const payload = `${u.userId}.${t.workspaceId}.${Date.now() + 10 * 60_000}`;
+    const state = `${payload}.${this.stateSignature(payload)}`;
+    const scope =
+      'pages_show_list,pages_manage_posts,instagram_basic,instagram_content_publish,business_management';
+    const redirectUrl =
+      `https://www.facebook.com/${this.cfg.META_GRAPH_VERSION}/dialog/oauth` +
+      `?client_id=${encodeURIComponent(this.cfg.META_APP_ID)}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&state=${encodeURIComponent(state)}&response_type=code&scope=${scope}`;
+    return { redirectUrl };
+  }
+
+  async metaOAuthCallback(code: string, state: string): Promise<{ redirectUrl: string }> {
+    const fail = (reason: string) =>
+      `${this.cfg.WEB_ORIGIN}/accounts?connected=error&reason=${reason}`;
+    const parts = state.split('.');
+    if (parts.length !== 4) return { redirectUrl: fail('bad_state') };
+    const [userId, workspaceId, exp, sig] = parts as [string, string, string, string];
+    if (this.stateSignature(`${userId}.${workspaceId}.${exp}`) !== sig) {
+      return { redirectUrl: fail('bad_state') };
+    }
+    if (Number(exp) < Date.now()) return { redirectUrl: fail('state_expired') };
+    const redirectUri = `${this.cfg.PUBLIC_BASE_URL}/api/accounts/meta/oauth/callback`;
+    const j = await this.json(
+      `https://graph.facebook.com/${this.cfg.META_GRAPH_VERSION}/oauth/access_token` +
+        `?client_id=${encodeURIComponent(this.cfg.META_APP_ID)}` +
+        `&client_secret=${encodeURIComponent(this.cfg.META_APP_SECRET)}` +
+        `&redirect_uri=${encodeURIComponent(redirectUri)}&code=${encodeURIComponent(code)}`,
+    ).catch(() => null);
+    const userToken = String(j?.access_token ?? '');
+    if (!userToken) return { redirectUrl: fail('exchange_failed') };
+    // Identity comes from the signed state, not the request (Meta's browser has no JWT).
+    const t: TenantInfo = {
+      workspaceId: workspaceId!,
+      role: 'admin',
+      accountScope: null,
+      killSwitch: false,
+    };
+    const u: AuthUser = { userId: userId!, sessionId: 'meta-oauth', mfa: true, totpEnabled: true };
+    const added = await this.connectMeta(t, u, userToken).catch(() => null);
+    if (!added) return { redirectUrl: fail('connect_failed') };
+    return { redirectUrl: `${this.cfg.WEB_ORIGIN}/accounts?connected=meta&added=${added.length}` };
+  }
+
+  private stateSignature(payload: string): string {
+    return createHmac('sha256', this.cfg.JWT_SECRET).update(payload).digest('base64url');
   }
 
   /** Dev/CI only: an account backed by the fake publisher. */

@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { AccountsController } from './accounts/accounts.controller';
 import { AccountsService } from './accounts/accounts.service';
+import { MetaOauthController } from './accounts/meta-oauth.controller';
 import { AuthModule } from './auth/auth.module';
 import { JwtGuard } from './auth/jwt.guard';
 import { CoreModule } from './common/core.module';
@@ -36,6 +37,7 @@ import { WorkspacesService } from './workspaces/workspaces.service';
     OpsController,
     WorkspacesController,
     AccountsController,
+    MetaOauthController,
     PostsController,
     MediaController,
     PdpaController,
