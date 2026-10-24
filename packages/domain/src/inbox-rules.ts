@@ -103,3 +103,12 @@ export const DEFAULT_SENSITIVE_KEYWORDS = [
 export function isSensitiveReply(text: string, keywords: readonly string[]): boolean {
   return keywords.some((k) => k.length > 0 && text.toLowerCase().includes(k.toLowerCase()));
 }
+
+/** NOTI-02/03: the types staff can toggle per user/channel (P1 subset + system alerts). */
+export const NOTIFICATION_TYPES = [
+  'publish_failed',
+  'account_disconnected',
+  'approval_requested',
+  'token_expiring',
+  'system_alert',
+] as const;

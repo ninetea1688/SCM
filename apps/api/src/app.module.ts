@@ -13,6 +13,7 @@ import { HealthController } from './health/health.controller';
 import { OpsController } from './health/ops.controller';
 import { EngageModule } from './inbox/engage.module';
 import { MediaController } from './media/media.controller';
+import { NotificationPrefsController } from './notifications/notification-prefs.controller';
 import { PdpaController } from './pdpa/pdpa.controller';
 import { PdpaService } from './pdpa/pdpa.service';
 import { PostsController } from './posts/posts.controller';
@@ -43,6 +44,7 @@ import { WorkspacesService } from './workspaces/workspaces.service';
     PostsController,
     MediaController,
     PdpaController,
+    NotificationPrefsController,
     WebhooksController,
   ],
   providers: [

@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { type Db, memberships, notifications, type Tx, users } from '@scm/db';
-import { inArray } from 'drizzle-orm';
+import { type Db, memberships, notificationPrefs, notifications, type Tx, users } from '@scm/db';
+import { and, eq, inArray } from 'drizzle-orm';
 import nodemailer, { type Transporter } from 'nodemailer';
 import { SYSTEM_DB } from '../common/db-tokens';
 import { type AppConfig, CONFIG } from '../config';
@@ -55,9 +55,14 @@ export class NotificationService {
       .select({ workspaceId: memberships.workspaceId, userId: memberships.userId })
       .from(memberships)
       .where(inArray(memberships.role, ['owner', 'admin']));
-    if (admins.length) {
+    const allowed = await this.respectingPrefs(
+      admins.map((a) => a.userId),
+      n.type,
+    );
+    const recipients = admins.filter((a) => allowed.includes(a.userId));
+    if (recipients.length) {
       await this.system.insert(notifications).values(
-        admins.map((a) => ({
+        recipients.map((a) => ({
           workspaceId: a.workspaceId,
           userId: a.userId,
           type: n.type,
@@ -74,14 +79,18 @@ export class NotificationService {
   }
 
   async notify(tx: Tx, n: NotifyInput): Promise<() => Promise<void>> {
-    const unique = [...new Set(n.userIds)];
+    const unique = await this.respectingPrefs(n.userIds, n.type);
     let emails: string[] = [];
     if (unique.length) {
       if (n.email && this.cfg.SMTP_URL) {
-        const rows = await tx
-          .select({ email: users.email })
-          .from(users)
-          .where(inArray(users.id, unique));
+        // NOTI-03: email respects the per-user email toggle for this type.
+        const emailAllowed = await this.respectingPrefs(unique, n.type, 'email');
+        const rows = emailAllowed.length
+          ? await tx
+              .select({ email: users.email })
+              .from(users)
+              .where(inArray(users.id, emailAllowed))
+          : [];
         emails = rows.map((r) => r.email);
       }
       await tx.insert(notifications).values(
@@ -111,6 +120,32 @@ export class NotificationService {
       if (line) await line;
       if (mail) await mail;
     };
+  }
+
+  /**
+   * NOTI-03: keep only users who have not opted out of this type+channel. A missing pref
+   * row means enabled (opt-out model). Cross-tenant by nature (other users' prefs) — the
+   * caller's tx is RLS-scoped to the actor, so prefs go through the system role.
+   */
+  private async respectingPrefs(
+    userIds: string[],
+    type: NotificationType,
+    channel: 'in_app' | 'email' = 'in_app',
+  ): Promise<string[]> {
+    const unique = [...new Set(userIds)];
+    if (unique.length === 0) return [];
+    const prefs = await this.system
+      .select({ userId: notificationPrefs.userId, enabled: notificationPrefs.enabled })
+      .from(notificationPrefs)
+      .where(
+        and(
+          inArray(notificationPrefs.userId, unique),
+          eq(notificationPrefs.notificationType, type),
+          eq(notificationPrefs.channel, channel),
+        ),
+      );
+    const optedOut = new Set(prefs.filter((p) => !p.enabled).map((p) => p.userId));
+    return unique.filter((id) => !optedOut.has(id));
   }
 
   /** NOTI-01 email channel. Dev points SMTP_URL at Mailpit; disabled when unset. */

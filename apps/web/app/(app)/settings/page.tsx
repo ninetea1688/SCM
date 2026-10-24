@@ -7,6 +7,7 @@ import type { Role } from '@scm/domain';
 import Link from 'next/link';
 import { load } from '@/lib/load';
 import { ApiError } from '@/lib/session';
+import { ModerationEditor, NotificationPrefsEditor } from './settings-extras';
 import { AddMemberForm, RevokeButton, SelfApprovalToggle } from './settings-forms';
 
 const ROLE_TH: Record<Role, string> = {
@@ -22,7 +23,14 @@ interface Current {
   id: string;
   name: string;
   role: Role;
-  settings: { allowSelfApproval?: boolean };
+  settings: {
+    allowSelfApproval?: boolean;
+    moderation?: {
+      forbiddenWords?: string[];
+      borderlineWords?: string[];
+      watchAccounts?: string[];
+    };
+  };
 }
 interface Member {
   userId: string;
@@ -76,6 +84,20 @@ export default async function SettingsPage() {
           initial={current.settings.allowSelfApproval === true}
           canEdit={current.role === 'owner'}
         />
+      </section>
+
+      <section className="space-y-3 rounded-xl border border-line bg-surface p-4">
+        <h2 className="font-medium">การดูแลคอมเมนต์ (MOD-02/03)</h2>
+        <p className="text-xs text-muted">
+          คำต้องห้าม = ซ่อนอัตโนมัติ · คำก้ำกึ่ง/บัญชีที่เฝ้าระวัง = เข้าคิวให้คนตัดสิน
+        </p>
+        <ModerationEditor initial={current.settings.moderation ?? {}} />
+      </section>
+
+      <section className="space-y-3 rounded-xl border border-line bg-surface p-4">
+        <h2 className="font-medium">การแจ้งเตือนของฉัน (NOTI-03)</h2>
+        <p className="text-xs text-muted">เลือกได้ว่าจะรับการแจ้งเตือนประเภทใด ทางช่องทางใด</p>
+        <NotificationPrefsEditor />
       </section>
 
       <section className="space-y-3 rounded-xl border border-line bg-surface p-4">
@@ -139,7 +161,7 @@ export default async function SettingsPage() {
                 <span className="text-muted">{thTime.format(new Date(a.createdAt))}</span>
                 <span className="font-medium">{a.action}</span>
                 <span className="text-muted">
-                  {a.targetType}:{a.actorUserId.slice(0, 8)}
+                  {a.targetType}:{a.actorUserId ? a.actorUserId.slice(0, 8) : 'ระบบ'}
                 </span>
               </li>
             ))}
