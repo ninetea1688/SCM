@@ -69,7 +69,10 @@ Evidence = the test that proves the AC. Update this file in the same change that
 | POST-07 Forbidden words + Thai proof (words part) | ✅ words | workspace forbidden list (MOD-02) blocks submit with 'forbidden_word' Thai issue (`publishing.e2e.test.ts`); Thai spell-check and ad-category rules remain (need a dictionary/rule source) |
 | CRM-01 Contact profile + history (P2, done early) | ✅ | GET /inbox/conversations/:id/profile — identity, first-contact date, received/sent/total counts (notes excluded), same-contact threads across accounts; CRM line in the chat desk header (`engage.e2e.test.ts`) |
 | CAL-04 Content gap (P2, done early) | ✅ | month-board empty non-holiday cells show a ว่าง chip |
+| CAL-06 Mourning/event ranges (P2, done early) | ✅ | + notifications_type_link_idx (migration 0018) fixing the reminder/SLA dedupe seq-scan |
 | CAL-06 Mourning/event ranges (P2, done early) | ✅ | settings.mourningRanges (owner PATCH, audited) — amber banner listing overlapping ranges + ไว้ทุกข์ markers on board cells for a content-appropriateness review |
+| ANA-05 Dashboard 8 ชั้น (P3, first cut) | 🟡 | /analytics renders the 8-card dashboard (GET /analytics/summary): layers 1/3/6/7/8 live (content, conversations, workflow, system, cost); layers 2/4/5 state 'ยังไม่มีแหล่งข้อมูล' until follower/bot/news integrations land |
+| ANA-06 Goal/KPI (P3, first cut) | ✅ first cut | kpi_goals (migration 0017) metric × platform targets; PUT /analytics/goals owner/admin-only, readable by all; goal editor + progress on /analytics (`dashboard.e2e.test.ts`) |
 | OPS-07 Platform changelog process | 🟡 | `platform-researcher` agent + `/verify-platform-limits` skill |
 | ANA-03 Event log | ✅ | ADR-0007 |
 | INT-04 Meta data-deletion callback | ✅ | callback verified + recorded; worker job deletes matching inbound events and closes the request (`pdpa.e2e.test.ts`) |
