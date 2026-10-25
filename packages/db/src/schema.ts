@@ -195,6 +195,12 @@ export const posts = pgTable('posts', {
   campaignId: uuid('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
   title: text('title').notNull(),
   body: text('body').notNull().default(''),
+  /**
+   * POST-05 content taxonomy: pillar, topic, audience, format, length, hook, cta,
+   * aiUsed, partnerShared — free-form labels so teams can slice later (AI can
+   * suggest values; humans confirm).
+   */
+  taxonomy: jsonb('taxonomy').$type<Record<string, unknown>>().notNull().default({}),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => users.id),

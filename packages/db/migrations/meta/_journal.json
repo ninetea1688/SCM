@@ -128,6 +128,13 @@
       "when": 1792899253494,
       "tag": "0017_luxuriant_blob",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792904281696,
+      "tag": "0019_post_taxonomy",
+      "breakpoints": true
     }
   ]
 }

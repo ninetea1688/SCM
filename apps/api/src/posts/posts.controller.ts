@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -44,6 +45,20 @@ const CreatePost = z.object({
 });
 const EditVariant = VariantIn.omit({ socialAccountId: true });
 const Comment = z.object({ comment: z.string().max(2000).optional() });
+/** POST-05 content taxonomy labels (POST AC: AI can suggest; humans confirm). */
+const Taxonomy = z
+  .object({
+    pillar: z.string().max(120).optional(),
+    topic: z.string().max(120).optional(),
+    audience: z.string().max(200).optional(),
+    format: z.string().max(60).optional(),
+    length: z.string().max(60).optional(),
+    hook: z.string().max(200).optional(),
+    cta: z.string().max(200).optional(),
+    aiUsed: z.boolean().optional(),
+    partnerShared: z.boolean().optional(),
+  })
+  .strict();
 const Schedule = z.object({ scheduledAt: z.coerce.date() });
 const Calendar = z.object({
   from: z.coerce.date(),
@@ -103,6 +118,19 @@ export class PostsController {
   }
 
   /** POST-06: version history with snapshots for the diff viewer. */
+  /** POST-05: content taxonomy labels (audited). */
+  @Put('posts/:id/taxonomy')
+  @HttpCode(200)
+  @RequirePermission('post.edit')
+  setTaxonomy(
+    @Tenant() t: TenantInfo,
+    @CurrentUser() u: AuthUser,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.posts.setTaxonomy(t, u, id, parseInput(Taxonomy, b));
+  }
+
   @Get('variants/:id/versions')
   @RequirePermission('report.view')
   versions(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser, @Param('id') id: string) {

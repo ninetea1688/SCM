@@ -635,6 +635,47 @@ export class PostsService {
     };
   }
 
+  /** POST-05: set content taxonomy labels (replaces the whole object, audited). */
+  async setTaxonomy(
+    t: TenantInfo,
+    u: AuthUser,
+    postId: string,
+    labels: {
+      pillar?: string;
+      topic?: string;
+      audience?: string;
+      format?: string;
+      length?: string;
+      hook?: string;
+      cta?: string;
+      aiUsed?: boolean;
+      partnerShared?: boolean;
+    },
+  ) {
+    return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {
+      const [post] = await tx
+        .select({ id: posts.id, taxonomy: posts.taxonomy })
+        .from(posts)
+        .where(and(eq(posts.id, postId), eq(posts.workspaceId, t.workspaceId)));
+      if (!post) throw new NotFoundException({ code: 'post_not_found' });
+      const before = (post.taxonomy ?? {}) as Record<string, unknown>;
+      await tx
+        .update(posts)
+        .set({ taxonomy: { ...labels } })
+        .where(eq(posts.id, postId));
+      await this.audit.record(tx, {
+        workspaceId: t.workspaceId,
+        actorUserId: u.userId,
+        action: 'post.taxonomy',
+        targetType: 'post',
+        targetId: postId,
+        before,
+        after: { ...labels },
+      });
+      return { ...labels };
+    });
+  }
+
   /** POST-06: version history — newest first, with the editor's display name. */
   async versions(t: TenantInfo, u: AuthUser, variantId: string) {
     return withTenant(this.db, { workspaceId: t.workspaceId, userId: u.userId }, async (tx) => {

@@ -59,3 +59,45 @@ describe('POST-06 version history', () => {
     await other.as('owner').http('get', `/variants/${variantId}/versions`).expect(404);
   });
 });
+
+describe('POST-05 content taxonomy', () => {
+  it('sets labels, returns them with the post, and is workspace-isolated', async () => {
+    // createWorld 'vers' post exists from the earlier describe? No — create our own.
+    const fb = await w
+      .as('admin')
+      .http('post', '/accounts/sandbox')
+      .send({ platform: 'facebook', name: 'เพจ taxonomy' })
+      .expect(201);
+    const created = await w
+      .as('editor')
+      .http('post', '/posts')
+      .send({
+        title: 'ป้ายคอนเทนต์',
+        variants: [{ socialAccountId: fb.body.id, caption: 'ป้าย' }],
+      })
+      .expect(201);
+    const postId = created.body.id as string;
+
+    await w
+      .as('editor')
+      .http('put', `/posts/${postId}/taxonomy`)
+      .send({
+        pillar: 'สุขภาพเชิงป้องกัน',
+        audience: 'ผู้สูงอายุ',
+        aiUsed: true,
+      })
+      .expect(200);
+
+    const post = await w.as('viewer').http('get', `/posts/${postId}`).expect(200);
+    expect(post.body.taxonomy).toEqual({
+      pillar: 'สุขภาพเชิงป้องกัน',
+      audience: 'ผู้สูงอายุ',
+      aiUsed: true,
+    });
+
+    const other = await createWorld(app, 'vers-tax');
+    await other.as('owner').http('put', `/posts/${postId}/taxonomy`).send({}).expect(404);
+
+    await w.as('editor').http('put', `/posts/${postId}/taxonomy`).send({ rogue: 1 }).expect(400);
+  });
+});

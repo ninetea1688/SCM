@@ -1,0 +1,1 @@
+ALTER TABLE "posts" ADD COLUMN "taxonomy" jsonb DEFAULT '{}'::jsonb NOT NULL;
