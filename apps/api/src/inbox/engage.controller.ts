@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -219,6 +220,27 @@ export class EngageController {
   analytics(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser, @Query() q: unknown) {
     const { platform } = parseInput(z.object({ platform: z.string().max(20).optional() }), q);
     return this.metrics.overview(t, u, { platform });
+  }
+
+  /** ANA-05: 8-layer dashboard aggregates (layers with data sources today). */
+  @Get('analytics/summary')
+  @RequirePermission('report.view')
+  summary(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser) {
+    return this.metrics.dashboard(t, u);
+  }
+
+  /** ANA-06: KPI targets. */
+  @Get('analytics/goals')
+  @RequirePermission('report.view')
+  getGoals(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser) {
+    return this.metrics.goals(t, u);
+  }
+
+  @Put('analytics/goals')
+  @HttpCode(200)
+  @RequirePermission('workspace.policy')
+  setGoals(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser, @Body() b: unknown) {
+    return this.metrics.setGoals(t, u, parseInput(AnalyticsService.GoalInput, b).goals);
   }
 
   /** Manual collect for demos/tests; the worker timer is the production path. */

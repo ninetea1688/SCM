@@ -2,9 +2,11 @@
  * ANA-01/02 skeleton: engagement per post × platform — one row per (post, platform) from
  * its newest snapshot, sorted by engagement rate. Platform chips split the view.
  */
-import { PLATFORM_LABEL_TH, PLATFORMS, type Platform } from '@scm/domain';
+import { PLATFORM_LABEL_TH, PLATFORMS, type Platform, type Role } from '@scm/domain';
 import Link from 'next/link';
 import { load } from '@/lib/load';
+import { DashboardGrid, type Summary } from './dashboard-grid';
+import { GoalsEditor } from './goals-editor';
 
 interface Row {
   postId: string;
@@ -35,6 +37,12 @@ export default async function AnalyticsPage({
 }) {
   const q = await searchParams;
   const platform = PLATFORMS.includes(q.platform as Platform) ? q.platform! : '';
+  const [summary, current] = await Promise.all([
+    load<Summary>('/analytics/summary', '/analytics'),
+    load<{ role: Role }>('/workspaces/current', '/analytics').catch(() => ({
+      role: 'viewer' as Role,
+    })),
+  ]);
   const rows = await load<Row[]>(
     `/analytics/posts${platform ? `?platform=${platform}` : ''}`,
     `/analytics${platform ? `?platform=${platform}` : ''}`,
@@ -48,6 +56,19 @@ export default async function AnalyticsPage({
           ยอดเข้าถึงและการมีส่วนร่วม แยกตามโพสต์และแพลตฟอร์ม — เรียงจากอัตราการมีส่วนร่วมสูงสุด
         </p>
       </div>
+
+      <section aria-labelledby="dash-title" className="space-y-3">
+        <h2 id="dash-title" className="text-lg font-semibold">
+          Dashboard ภาพรวม (ANA-05)
+        </h2>
+        <DashboardGrid s={summary} />
+        <details className="rounded-xl border border-line bg-surface p-4">
+          <summary className="cursor-pointer text-sm font-medium">เป้าหมาย KPI (ANA-06)</summary>
+          <div className="mt-2">
+            <GoalsEditor role={current.role} />
+          </div>
+        </details>
+      </section>
 
       <nav aria-label="กรองแพลตฟอร์ม" className="flex flex-wrap gap-1.5">
         <Link

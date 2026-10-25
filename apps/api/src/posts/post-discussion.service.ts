@@ -115,7 +115,7 @@ export class ApprovalReminderJob implements OnModuleInit, OnModuleDestroy {
   }
 
   /** APPR-04: remind once per variant per day while it sits in review too long. */
-  async tick(now = new Date()): Promise<{ reminded: number }> {
+  async tick(now = new Date(), workspaceId?: string): Promise<{ reminded: number }> {
     const cutoff = new Date(now.getTime() - this.cfg.APPROVAL_REMIND_HOURS * 3600_000);
     const stuck = await this.system
       .select({

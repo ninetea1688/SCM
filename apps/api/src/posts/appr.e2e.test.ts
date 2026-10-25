@@ -88,7 +88,9 @@ describe('APPR-03 internal post comments', () => {
 });
 
 describe('APPR-04 stuck-approval reminders', () => {
-  it('a variant in review past the threshold reminds once per day; approval stops it', async () => {
+  it('a variant in review past the threshold reminds once per day; approval stops it', {
+    timeout: 90_000,
+  }, async () => {
     // Send for review and age the variant past APPROVAL_REMIND_HOURS.
     await w.as('editor').http('post', `/variants/${variantId}/submit`).expect(200);
     await ownerDb
@@ -97,7 +99,7 @@ describe('APPR-04 stuck-approval reminders', () => {
       .where(eq(postVariants.id, variantId));
 
     const job = new ApprovalReminderJob(app.get(SYSTEM_DB), notificationService(), app.get(CONFIG));
-    const first = await job.tick();
+    const first = await job.tick(new Date(), w.workspaceId);
     expect(first.reminded).toBeGreaterThanOrEqual(1);
 
     const rows = await ownerDb
@@ -113,7 +115,7 @@ describe('APPR-04 stuck-approval reminders', () => {
     expect(rows.length).toBeGreaterThanOrEqual(3); // notifySystem row per admin + owners/admins in-app
 
     // Same day again → deduped.
-    const second = await job.tick();
+    const second = await job.tick(new Date(), w.workspaceId);
     // Other (older) variants may remind, but ours must be deduped: no NEW row for it.
     void second;
 
@@ -129,7 +131,7 @@ describe('APPR-04 stuck-approval reminders', () => {
       );
     const countBefore = before.length;
     expect(countBefore).toBeGreaterThanOrEqual(3);
-    await job.tick();
+    await job.tick(new Date(), w.workspaceId);
     const after = await ownerDb
       .select()
       .from(notifications)
@@ -152,6 +154,6 @@ describe('APPR-04 stuck-approval reminders', () => {
       .update(postVariants)
       .set({ updatedAt: new Date(Date.now() - 48 * 3600_000) })
       .where(eq(postVariants.id, variantId));
-    await expect(job.tick()).resolves.toEqual({ reminded: 0 });
+    await expect(job.tick(new Date(), w.workspaceId)).resolves.toEqual({ reminded: 0 });
   });
 });

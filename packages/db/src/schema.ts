@@ -597,6 +597,27 @@ export const savedReplies = pgTable(
 );
 
 /**
+ * ANA-06: KPI targets per workspace — metric × platform (or 'all'), optional 'YYYY-MM'
+ * period; null period = the standing default target. Dashboard compares real values.
+ */
+export const kpiGoals = pgTable(
+  'kpi_goals',
+  {
+    id: id(),
+    workspaceId: workspaceRef(),
+    metric: text('metric', {
+      enum: ['reach', 'engagement_rate', 'posts', 'conversations'],
+    }).notNull(),
+    platform: text('platform').notNull().default('all'),
+    target: integer('target').notNull(),
+    period: text('period'),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('kpi_goals_uq').on(t.workspaceId, t.metric, t.platform)],
+);
+
+/**
  * NOTI-03/INBOX-11: per-user notification preferences. A missing row means "on" —
  * staff opt OUT per type/channel rather than opt in. In-app rows respect the type
  * toggle; email respects the email toggle for that type.
@@ -711,4 +732,5 @@ export const TENANT_TABLES = [
   'post_comments',
   'post_metrics',
   'post_internal_comments',
+  'kpi_goals',
 ] as const;
