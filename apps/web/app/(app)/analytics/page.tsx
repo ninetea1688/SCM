@@ -86,6 +86,13 @@ export default async function AnalyticsPage({
             {PLATFORM_LABEL_TH[p]}
           </Link>
         ))}
+        <a
+          href={`/bff/analytics/posts.csv${platform ? `?platform=${platform}` : ''}`}
+          className="ml-auto rounded-full border border-line px-2.5 py-1 text-xs text-muted transition-colors hover:border-brand hover:text-ink"
+          title="ANA-16: ดาวน์โหลดเป็น CSV เปิดใน Excel ได้"
+        >
+          ส่งออก CSV
+        </a>
       </nav>
 
       {rows.length === 0 ? (

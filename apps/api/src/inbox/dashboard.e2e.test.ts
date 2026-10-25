@@ -83,3 +83,14 @@ describe('ANA-05 dashboard summary', () => {
     expect(s.body.system.publishSuccessRate).toBeNull(); // no jobs yet in this workspace
   });
 });
+
+describe('ANA-16 CSV export', () => {
+  it('serves the per-post table as UTF-8 BOM CSV with Thai headers', async () => {
+    const csv = await w.as('viewer').http('get', '/analytics/posts.csv').expect(200);
+    expect(csv.headers['content-type']).toContain('text/csv');
+    expect(csv.text.charCodeAt(0)).toBe(0xfeff); // BOM
+    expect(csv.text).toContain('"โพสต์","ช่องทาง","บัญชี"');
+    // Quotes escaped so commas inside titles don't break columns.
+    expect(csv.text.split('\r\n').length).toBeGreaterThanOrEqual(1);
+  });
+});

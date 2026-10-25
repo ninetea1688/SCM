@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   Param,
   ParseUUIDPipe,
@@ -227,6 +228,45 @@ export class EngageController {
   @RequirePermission('report.view')
   summary(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser) {
     return this.metrics.dashboard(t, u);
+  }
+
+  /** ANA-16: per-post engagement as CSV (BOM so Thai opens correctly in Excel). */
+  @Get('analytics/posts.csv')
+  @RequirePermission('report.view')
+  @Header('content-type', 'text/csv; charset=utf-8')
+  async postsCsv(@Tenant() t: TenantInfo, @CurrentUser() u: AuthUser, @Query() q: unknown) {
+    const { platform } = parseInput(ListQuery.pick({ platform: true }), q);
+    const rows = await this.metrics.overview(t, u, { platform });
+    const esc = (v: unknown) => `"${String(v).replaceAll('"', '""')}"`;
+    const head = [
+      'โพสต์',
+      'ช่องทาง',
+      'บัญชี',
+      'เข้าถึง',
+      'ถูกใจ',
+      'คอมเมนต์',
+      'แชร์',
+      'อัตรามีส่วนร่วม (%)',
+      'เก็บเมื่อ',
+    ]
+      .map(esc)
+      .join(',');
+    const lines = rows.map((r) =>
+      [
+        r.postTitle,
+        r.platform,
+        r.accountName,
+        r.reach,
+        r.likes,
+        r.comments,
+        r.shares,
+        r.engagementRate ?? '',
+        r.capturedAt,
+      ]
+        .map(esc)
+        .join(','),
+    );
+    return '\uFEFF' + [head, ...lines].join('\r\n');
   }
 
   /** ANA-06: KPI targets. */
