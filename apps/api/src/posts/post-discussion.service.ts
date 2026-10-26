@@ -127,7 +127,14 @@ export class ApprovalReminderJob implements OnModuleInit, OnModuleDestroy {
       })
       .from(postVariants)
       .innerJoin(posts, eq(posts.id, postVariants.postId))
-      .where(and(eq(postVariants.status, 'in_review'), lt(postVariants.updatedAt, cutoff)))
+      .where(
+        and(
+          eq(postVariants.status, 'in_review'),
+          lt(postVariants.updatedAt, cutoff),
+          // Scoped call (tests, manual re-run) stays hermetic against other workspaces' backlog.
+          workspaceId ? eq(posts.workspaceId, workspaceId) : undefined,
+        ),
+      )
       .orderBy(asc(postVariants.updatedAt)) // oldest backlog first
       .limit(500);
 

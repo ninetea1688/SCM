@@ -15,6 +15,7 @@ import {
   postMetrics,
   publishJobs,
   socialAccounts,
+  workspaces,
 } from '@scm/db';
 import { desc, eq } from 'drizzle-orm';
 import request from 'supertest';
@@ -37,6 +38,19 @@ const cipher = new TokenCipher('k1:ZGV2LW9ubHktMzItYnl0ZS1rZXktY2hhbmdlLW1lISE='
 beforeAll(async () => {
   app = await bootApp();
   w = await createWorld(app, 'engage');
+  // INBOX-07: the auto-answer must fire whenever this suite runs, so pick a working-hours
+  // window that provably excludes Bangkok wall clock right now (morning → afternoon window,
+  // otherwise → morning window); all days count as workdays to remove the weekday axis.
+  const bangkok = new Date(Date.now() + 7 * 3600_000);
+  const mins = bangkok.getUTCHours() * 60 + bangkok.getUTCMinutes();
+  const hours =
+    mins < 720
+      ? { start: '12:00', end: '23:59', workdays: [0, 1, 2, 3, 4, 5, 6] }
+      : { start: '00:00', end: '11:00', workdays: [0, 1, 2, 3, 4, 5, 6] };
+  await ownerDb
+    .update(workspaces)
+    .set({ settings: { inboxWorkingHours: hours } })
+    .where(eq(workspaces.id, w.workspaceId));
   const line = await w
     .as('admin')
     .http('post', '/accounts/sandbox')
