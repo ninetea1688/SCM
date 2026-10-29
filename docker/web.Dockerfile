@@ -20,6 +20,8 @@ RUN addgroup -S scm && adduser -S scm -G scm
 WORKDIR /app
 COPY --from=build --chown=scm:scm /repo/apps/web/.next/standalone ./
 COPY --from=build --chown=scm:scm /repo/apps/web/.next/static ./apps/web/.next/static
+# Standalone does NOT serve public/ by itself — without this every brand asset 404s in prod.
+COPY --from=build --chown=scm:scm /repo/apps/web/public ./apps/web/public
 USER scm
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]
