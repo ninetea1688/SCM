@@ -1,0 +1,21 @@
+# Kong Gateway host (e.g. scm.officesoft.shop behind a shared Kong in Docker).
+# Cloudflare terminates TLS; the shared Kong (network `kong-docker_default`) routes to the
+# stack by compose service name — this replaces the bundled Caddy. Register the Kong
+# services/routes once per host with docker/scripts/kong-routes.sh.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.kong.yml \
+#     --env-file .env.prod up -d --build --scale caddy=0
+services:
+  web:
+    networks: [default, kong]
+  api:
+    networks: [default, kong]
+  s3:
+    networks: [default, kong]
+
+networks:
+  default: {}
+  kong:
+    name: kong-docker_default
+    external: true

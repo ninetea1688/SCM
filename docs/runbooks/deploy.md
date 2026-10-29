@@ -45,6 +45,29 @@ done
 = `https://DOMAIN/webhooks/meta/data-deletion`, LINE webhook URL from the account connect response,
 `LINE_NOTIFY_*` set (PUB AC: failure alerts within 1 minute), backups copied off-host.
 
+## Kong Gateway host (shared Kong in Docker)
+
+When the host already runs a shared Kong Gateway (DB-backed) fronting other sites — TLS is
+terminated upstream (e.g. Cloudflare) and Kong serves plain HTTP routes per `Host` — deploy the
+stack into Kong's network instead of Caddy:
+
+```bash
+git clone <repo> scm && cd scm
+cp .env.example .env.prod          # fill secrets; DOMAIN + MEDIA_DOMAIN on the shared domain
+cp docker/seaweedfs/s3.prod.json.example docker/seaweedfs/s3.prod.json
+docker compose -f docker-compose.prod.yml -f docker-compose.kong.yml \
+  --env-file .env.prod up -d --build --scale caddy=0
+docker compose -f docker-compose.prod.yml -f docker-compose.kong.yml --env-file .env.prod \
+  run --rm migrate node dist/cli/seed.js admin@org.go.th '<strong-password>' 'ผู้ดูแล' 'ชื่อ Workspace'
+DOMAIN=scm.officesoft.shop MEDIA_DOMAIN=scm-media.officesoft.shop ./docker/scripts/kong-routes.sh
+```
+
+`docker-compose.kong.yml` joins `web`/`api`/`s3` to the external `kong-docker_default` network so
+Kong resolves them by compose service name; `--scale caddy=0` keeps the bundled Caddy parked.
+`kong-routes.sh` is idempotent (named upserts) — re-run after every deploy. The media host must
+be path-free (SigV4 signs the request path, so a path prefix would break presigned URLs) — give
+`MEDIA_DOMAIN` its own DNS record pointing at the same host.
+
 ## Staging
 
 Same `docker-compose.prod.yml`, separate host and env (owner decision 2026-10-23). Staging is the
