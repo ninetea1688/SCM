@@ -25,9 +25,9 @@ put service scm-web '{"name":"scm-web","host":"scm-web","port":3000,"protocol":"
 put service scm-api '{"name":"scm-api","host":"scm-api","port":4000,"protocol":"http","connect_timeout":10000,"read_timeout":120000,"write_timeout":120000,"retries":3}'
 put service scm-s3 '{"name":"scm-s3","host":"scm-s3","port":8333,"protocol":"http","connect_timeout":10000,"read_timeout":120000,"write_timeout":120000,"retries":3}'
 
-put route scm-web-route '{"name":"scm-web-route","service":{"name":"scm-web"},"protocols":["http","https"],"hosts":["'"$DOMAIN"'"],"paths":["/"],"strip_path":false}'
-put route scm-api-route '{"name":"scm-api-route","service":{"name":"scm-api"},"protocols":["http","https"],"hosts":["'"$DOMAIN"'"],"paths":["/api","/webhooks","/health"],"strip_path":false}'
-put route scm-s3-route '{"name":"scm-s3-route","service":{"name":"scm-s3"},"protocols":["http","https"],"hosts":["'"$MEDIA_DOMAIN"'"],"paths":["/"],"strip_path":false}'
+put route scm-web-route '{"name":"scm-web-route","service":{"name":"scm-web"},"protocols":["http","https"],"hosts":["'"$DOMAIN"'"],"paths":["/"],"strip_path":false,"preserve_host":true}'
+put route scm-api-route '{"name":"scm-api-route","service":{"name":"scm-api"},"protocols":["http","https"],"hosts":["'"$DOMAIN"'"],"paths":["/api","/webhooks","/health"],"strip_path":false,"preserve_host":true}'
+put route scm-s3-route '{"name":"scm-s3-route","service":{"name":"scm-s3"},"protocols":["http","https"],"hosts":["'"$MEDIA_DOMAIN"'"],"paths":["/"],"strip_path":false,"preserve_host":true}'
 
 echo "--- verify (local Kong proxy) ---"
 echo "web  /login -> $(curl -s -o /dev/null -w '%{http_code}' -H "Host: $DOMAIN" http://127.0.0.1/login)"

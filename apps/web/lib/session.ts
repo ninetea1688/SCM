@@ -4,6 +4,7 @@
  * `/bff/*` (client).
  */
 import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
 
 export const API_URL = process.env.API_INTERNAL_URL ?? 'http://localhost:4000';
 export const ACCESS = 'scm_at';
@@ -16,6 +17,13 @@ export const cookieOpts = {
   secure: process.env.NODE_ENV === 'production',
   path: '/',
 };
+
+/** 30x with a RELATIVE Location. Absolute URLs built from req.url/req.nextUrl.origin resolve
+ * to the server's bind address (https://0.0.0.0:PORT) behind a gateway that does not preserve
+ * Host — internal bounces must always stay relative (RFC 7231 allows it; browsers resolve). */
+export function bounce(path: string, status: 302 | 303 | 307 = 307): NextResponse {
+  return new NextResponse(null, { status, headers: { location: path } });
+}
 
 export interface TokenPair {
   accessToken: string;
