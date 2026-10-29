@@ -63,10 +63,14 @@ DOMAIN=scm.officesoft.shop MEDIA_DOMAIN=scm-media.officesoft.shop ./docker/scrip
 ```
 
 `docker-compose.kong.yml` joins `web`/`api`/`s3` to the external `kong-docker_default` network so
-Kong resolves them by compose service name; `--scale caddy=0` keeps the bundled Caddy parked.
-`kong-routes.sh` is idempotent (named upserts) — re-run after every deploy. The media host must
-be path-free (SigV4 signs the request path, so a path prefix would break presigned URLs) — give
-`MEDIA_DOMAIN` its own DNS record pointing at the same host.
+Kong resolves them by the UNIQUE aliases `scm-web`/`scm-api`/`scm-s3` — never point Kong (or the
+web BFF's `API_INTERNAL_URL`) at the bare service names `api`/`web`/`s3`: on a shared gateway
+network those aliases collide with other projects' containers and Docker DNS round-robins them.
+`--scale caddy=0` keeps the bundled Caddy parked. `kong-routes.sh` is idempotent (named upserts)
+— re-run after every deploy. Recreating containers changes their IPs and Kong caches DNS: after
+`up -d` that recreates `web`/`api`/`s3`, restart the Kong container once routes look wrong.
+The media host must be path-free (SigV4 signs the request path, so a path prefix would break
+presigned URLs) — give `MEDIA_DOMAIN` its own DNS record pointing at the same host.
 
 ## Staging
 

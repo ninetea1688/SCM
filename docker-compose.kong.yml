@@ -12,12 +12,18 @@
 #     --env-file .env.prod up -d --build --scale caddy=0
 services:
   web:
+    # The image bakes API_INTERNAL_URL=http://api:4000 — on a shared gateway network the
+    # bare `api` name is ambiguous (other projects' containers), so the BFF must use the
+    # unique alias that exists on BOTH networks (see api.networks below).
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_URL: http://scm-api:4000
     networks:
       default: {}
       kong: { aliases: [scm-web] }
   api:
     networks:
-      default: {}
+      default: { aliases: [scm-api] }
       kong: { aliases: [scm-api] }
   s3:
     networks:
