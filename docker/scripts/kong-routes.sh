@@ -3,7 +3,8 @@
 # re-run on every deploy. Run ON the gateway host (Admin API is on host loopback):
 #   DOMAIN=scm.officesoft.shop MEDIA_DOMAIN=scm-media.officesoft.shop ./kong-routes.sh
 # Kong joins the stack's compose network (docker-compose.kong.yml) and reaches the services
-# by name: web:3000 (UI/BFF), api:4000 (/api, /webhooks, /health), s3:8333 (media host).
+# by their UNIQUE network aliases scm-web:3000 (UI/BFF), scm-api:4000 (/api, /webhooks,
+# /health), scm-s3:8333 (media host) — bare `api`/`web` aliases collide with other projects.
 set -eu
 KONG="${KONG:-http://127.0.0.1:8001}"
 DOMAIN="${DOMAIN:?set DOMAIN=scm.officesoft.shop}"
@@ -20,9 +21,9 @@ put() { # put <kind> <name> <json>
   fi
 }
 
-put service scm-web '{"name":"scm-web","host":"web","port":3000,"protocol":"http","connect_timeout":10000,"read_timeout":60000,"write_timeout":60000,"retries":3}'
-put service scm-api '{"name":"scm-api","host":"api","port":4000,"protocol":"http","connect_timeout":10000,"read_timeout":120000,"write_timeout":120000,"retries":3}'
-put service scm-s3 '{"name":"scm-s3","host":"s3","port":8333,"protocol":"http","connect_timeout":10000,"read_timeout":120000,"write_timeout":120000,"retries":3}'
+put service scm-web '{"name":"scm-web","host":"scm-web","port":3000,"protocol":"http","connect_timeout":10000,"read_timeout":60000,"write_timeout":60000,"retries":3}'
+put service scm-api '{"name":"scm-api","host":"scm-api","port":4000,"protocol":"http","connect_timeout":10000,"read_timeout":120000,"write_timeout":120000,"retries":3}'
+put service scm-s3 '{"name":"scm-s3","host":"scm-s3","port":8333,"protocol":"http","connect_timeout":10000,"read_timeout":120000,"write_timeout":120000,"retries":3}'
 
 put route scm-web-route '{"name":"scm-web-route","service":{"name":"scm-web"},"protocols":["http","https"],"hosts":["'"$DOMAIN"'"],"paths":["/"],"strip_path":false}'
 put route scm-api-route '{"name":"scm-api-route","service":{"name":"scm-api"},"protocols":["http","https"],"hosts":["'"$DOMAIN"'"],"paths":["/api","/webhooks","/health"],"strip_path":false}'
